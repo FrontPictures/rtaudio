@@ -5220,20 +5220,22 @@ void RtApiWasapi::closeStream( void )
   }
 
   // clean up stream memory
-  SAFE_RELEASE( ( ( WasapiHandle* ) stream_.apiHandle )->captureAudioClient )
-  SAFE_RELEASE( ( ( WasapiHandle* ) stream_.apiHandle )->renderAudioClient )
+  if (stream_.apiHandle) {
+      SAFE_RELEASE(((WasapiHandle*)stream_.apiHandle)->captureAudioClient)
+          SAFE_RELEASE(((WasapiHandle*)stream_.apiHandle)->renderAudioClient)
 
-  SAFE_RELEASE( ( ( WasapiHandle* ) stream_.apiHandle )->captureClient )
-  SAFE_RELEASE( ( ( WasapiHandle* ) stream_.apiHandle )->renderClient )
+          SAFE_RELEASE(((WasapiHandle*)stream_.apiHandle)->captureClient)
+          SAFE_RELEASE(((WasapiHandle*)stream_.apiHandle)->renderClient)
 
-  if ( ( ( WasapiHandle* ) stream_.apiHandle )->captureEvent )
-    CloseHandle( ( ( WasapiHandle* ) stream_.apiHandle )->captureEvent );
+          if (((WasapiHandle*)stream_.apiHandle)->captureEvent)
+              CloseHandle(((WasapiHandle*)stream_.apiHandle)->captureEvent);
 
-  if ( ( ( WasapiHandle* ) stream_.apiHandle )->renderEvent )
-    CloseHandle( ( ( WasapiHandle* ) stream_.apiHandle )->renderEvent );
+      if (((WasapiHandle*)stream_.apiHandle)->renderEvent)
+          CloseHandle(((WasapiHandle*)stream_.apiHandle)->renderEvent);
 
-  delete ( WasapiHandle* ) stream_.apiHandle;
-  stream_.apiHandle = NULL;
+      delete (WasapiHandle*)stream_.apiHandle;
+      stream_.apiHandle = NULL;
+  }
 
   for ( int i = 0; i < 2; i++ ) {
     if ( stream_.userBuffer[i] ) {
