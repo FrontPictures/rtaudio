@@ -847,6 +847,19 @@ RtAudio::DeviceInfo RtApi :: getDeviceInfo( unsigned int deviceId )
   return RtAudio::DeviceInfo();
 }
 
+RtAudio::DeviceInfo RtApi::getDeviceInfoByBusID(std::string busID)
+{
+    if (deviceList_.size() == 0) probeDevices();
+    for (unsigned int m = 0; m < deviceList_.size(); m++) {
+        if (deviceList_[m].busID== busID)
+            return deviceList_[m];
+    }
+
+    errorText_ = "RtApi::getDeviceInfo: deviceId argument not found.";
+    error(RTAUDIO_INVALID_PARAMETER);
+    return RtAudio::DeviceInfo();
+}
+
 void RtApi :: closeStream( void )
 {
   // MUST be implemented in subclasses!
@@ -5153,6 +5166,7 @@ bool RtApiWasapi::probeDeviceInfo( RtAudio::DeviceInfo &info, LPWSTR deviceId, b
   }
 
   info.name = convertCharPointerToStdString( deviceNameProp.pwszVal );
+  info.busID = convertCharPointerToStdString(deviceId);
 
   // Get audio client
   hr = devicePtr->Activate( __uuidof( IAudioClient ), CLSCTX_ALL, NULL, ( void** ) &audioClient );

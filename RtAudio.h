@@ -287,6 +287,7 @@ class RTAUDIO_DLL_PUBLIC RtAudio
   struct DeviceInfo {
     unsigned int ID{};              /*!< Device ID used to specify a device to RtAudio. */
     std::string name;               /*!< Character string device name. */
+    std::string busID;              /*!< Unique ID of device bus. */
     unsigned int outputChannels{};  /*!< Maximum output channels supported by device. */
     unsigned int inputChannels{};   /*!< Maximum input channels supported by device. */
     unsigned int duplexChannels{};  /*!< Maximum simultaneous input/output channels supported by device. */
@@ -488,6 +489,9 @@ class RTAUDIO_DLL_PUBLIC RtAudio
     "true".
   */
   RtAudio::DeviceInfo getDeviceInfo( unsigned int deviceId );
+
+  //! Return an RtAudio::DeviceInfo structure for a specified device bus ID.
+  RtAudio::DeviceInfo getDeviceInfoByBusID(std::string busID);
 
   //! A function that returns the ID of the default output device.
   /*!
@@ -753,6 +757,7 @@ public:
   std::vector<unsigned int> getDeviceIds( void );
   std::vector<std::string> getDeviceNames( void );
   RtAudio::DeviceInfo getDeviceInfo( unsigned int deviceId );
+  RtAudio::DeviceInfo getDeviceInfoByBusID(std::string busID);
   virtual unsigned int getDefaultInputDevice( void );
   virtual unsigned int getDefaultOutputDevice( void );
   RtAudioErrorType openStream( RtAudio::StreamParameters *outputParameters,
@@ -909,6 +914,7 @@ protected:
 inline RtAudio::Api RtAudio :: getCurrentApi( void ) { return rtapi_->getCurrentApi(); }
 inline unsigned int RtAudio :: getDeviceCount( void ) { return rtapi_->getDeviceCount(); }
 inline RtAudio::DeviceInfo RtAudio :: getDeviceInfo( unsigned int deviceId ) { return rtapi_->getDeviceInfo( deviceId ); }
+inline RtAudio::DeviceInfo RtAudio::getDeviceInfoByBusID(std::string busID) { return rtapi_->getDeviceInfoByBusID(busID); }
 inline std::vector<unsigned int> RtAudio :: getDeviceIds( void ) { return rtapi_->getDeviceIds(); }
 inline std::vector<std::string> RtAudio :: getDeviceNames( void ) { return rtapi_->getDeviceNames(); }
 inline unsigned int RtAudio :: getDefaultInputDevice( void ) { return rtapi_->getDefaultInputDevice(); }
