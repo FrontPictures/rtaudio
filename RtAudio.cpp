@@ -7964,6 +7964,7 @@ void RtApiAlsa :: probeDevices( void )
     if ( m == deviceList_.size() ) { // new device
       RtAudio::DeviceInfo info;
       info.name = deviceNames[n];
+      info.busID = deviceIds[n];
       if ( probeDeviceInfo( info, deviceIds[n] ) == false ) continue; // ignore if probe fails
       info.ID = currentDeviceId_++;  // arbitrary internal device ID
       if ( info.name == defaultDeviceName ) {
@@ -9114,6 +9115,8 @@ static void rt_pa_set_sink_info( pa_context * /*c*/, const pa_sink_info *i,
   
   RtAudio::DeviceInfo info;
   info.name = name;
+  // TODO get device id for Pulse devices
+  info.busID = "";
   info.outputChannels = i->sample_spec.channels;
   info.preferredSampleRate = i->sample_spec.rate;
   info.isDefaultOutput = ( paProbeInfo->defaultSinkName == i->name );

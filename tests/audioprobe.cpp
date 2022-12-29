@@ -47,6 +47,7 @@ void listDevices( RtAudio& audio )
     info = audio.getDeviceInfo( devices[i] );
 
     std::cout << "\nDevice Name = " << info.name << '\n';
+    std::cout << "Device Bus ID = " << info.busID << '\n';
     std::cout << "Device Index = " << i << '\n';
     std::cout << "Output Channels = " << info.outputChannels << '\n';
     std::cout << "Input Channels = " << info.inputChannels << '\n';
