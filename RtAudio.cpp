@@ -3425,6 +3425,7 @@ void RtApiAsio :: probeDevices( void )
       info.name = driverNames.back();
       if ( probeDeviceInfo( info ) == false ) continue; // ignore if probe fails
       info.ID = currentDeviceId_++;  // arbitrary internal device ID
+      info.busID = driverNames.back();
       deviceList_.push_back( info );
     }
   }
