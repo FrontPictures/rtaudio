@@ -193,6 +193,7 @@ public:
 
   bool coInitialized_;
   void probeDevices( void ) override;
+  void listDevices(void) override;
   bool probeDeviceInfo( RtAudio::DeviceInfo &info );
   bool probeDeviceOpen( unsigned int device, StreamMode mode, unsigned int channels, 
                         unsigned int firstChannel, unsigned int sampleRate,
@@ -762,6 +763,11 @@ void RtApi :: probeDevices( void )
   return;
 }
 
+void RtApi :: listDevices( void )
+{    
+  probeDevices();
+}
+
 unsigned int RtApi :: getDeviceCount( void )
 {
   probeDevices();
@@ -777,6 +783,15 @@ std::vector<unsigned int> RtApi :: getDeviceIds( void )
   for ( unsigned int m=0; m<deviceList_.size(); m++ )
     deviceIds.push_back( deviceList_[m].ID );
 
+  return deviceIds;
+}
+
+std::vector<unsigned int> RtApi :: getDeviceIdsNoProbe(void)
+{
+  listDevices();
+  std::vector<unsigned int> deviceIds;
+  for (unsigned int m = 0; m < deviceList_.size(); m++)
+    deviceIds.push_back(deviceList_[m].ID);
   return deviceIds;
 }
 
@@ -836,7 +851,7 @@ unsigned int RtApi :: getDefaultOutputDevice( void )
 
 RtAudio::DeviceInfo RtApi :: getDeviceInfo( unsigned int deviceId )
 {
-  if ( deviceList_.size() == 0 ) probeDevices();
+  probeDevices();
   for ( unsigned int m=0; m<deviceList_.size(); m++ ) {
     if ( deviceList_[m].ID == deviceId )
       return deviceList_[m];
@@ -844,6 +859,18 @@ RtAudio::DeviceInfo RtApi :: getDeviceInfo( unsigned int deviceId )
 
   errorText_ = "RtApi::getDeviceInfo: deviceId argument not found.";
   error( RTAUDIO_INVALID_PARAMETER );
+  return RtAudio::DeviceInfo();
+}
+
+RtAudio::DeviceInfo RtApi :: getDeviceInfoNoProbe( unsigned int deviceId )
+{
+  for (unsigned int m = 0; m < deviceList_.size(); m++) {
+    if (deviceList_[m].ID == deviceId)
+      return deviceList_[m];
+  }
+
+  errorText_ = "RtApi::getDeviceInfo: deviceId argument not found.";
+  error(RTAUDIO_INVALID_PARAMETER);
   return RtAudio::DeviceInfo();
 }
 
@@ -3391,6 +3418,16 @@ RtApiAsio :: ~RtApiAsio()
 void RtApiAsio :: probeDevices( void )
 {
   // See list of required functionality in RtApi::probeDevices().
+  listDevices();
+
+  for (auto& d : deviceList_) {
+    if (probeDeviceInfo(d) == false) continue; // ignore if probe fails
+  }
+}
+
+void RtApiAsio :: listDevices(void)
+{
+  // See list of required functionality in RtApi::probeDevices().
 
   if ( streamOpen ) {
     errorText_ = "RtApiAsio::probeDevices: Another RtAudio ASIO stream is open, cannot probe devices.";
@@ -3423,7 +3460,6 @@ void RtApiAsio :: probeDevices( void )
     if ( m == deviceList_.size() ) { // new device
       RtAudio::DeviceInfo info;
       info.name = driverNames.back();
-      if ( probeDeviceInfo( info ) == false ) continue; // ignore if probe fails
       info.ID = currentDeviceId_++;  // arbitrary internal device ID
       info.busID = driverNames.back();
       deviceList_.push_back( info );

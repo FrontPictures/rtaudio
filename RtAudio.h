@@ -465,6 +465,10 @@ class RTAUDIO_DLL_PUBLIC RtAudio
   */
   std::vector<unsigned int> getDeviceIds( void );
 
+  //! A public function that returns a vector of audio device IDs
+  //! without probing information.  
+  std::vector<unsigned int> getDeviceIdsNoProbe( void );
+
   //! A public function that returns a vector of audio device names.
   /*!
     This function performs a system query of available devices each
@@ -489,6 +493,8 @@ class RTAUDIO_DLL_PUBLIC RtAudio
     "true".
   */
   RtAudio::DeviceInfo getDeviceInfo( unsigned int deviceId );
+
+  RtAudio::DeviceInfo RtAudio :: getDeviceInfoNoProbe( unsigned int deviceId );
 
   //! Return an RtAudio::DeviceInfo structure for a specified device bus ID.
   RtAudio::DeviceInfo getDeviceInfoByBusID(std::string busID);
@@ -755,8 +761,10 @@ public:
   virtual RtAudio::Api getCurrentApi( void ) = 0;
   unsigned int getDeviceCount( void );
   std::vector<unsigned int> getDeviceIds( void );
+  std::vector<unsigned int> getDeviceIdsNoProbe(void);
   std::vector<std::string> getDeviceNames( void );
   RtAudio::DeviceInfo getDeviceInfo( unsigned int deviceId );
+  RtAudio::DeviceInfo getDeviceInfoNoProbe( unsigned int deviceId );
   RtAudio::DeviceInfo getDeviceInfoByBusID(std::string busID);
   virtual unsigned int getDefaultInputDevice( void );
   virtual unsigned int getDefaultOutputDevice( void );
@@ -867,6 +875,12 @@ protected:
     list of devices may be incomplete.
   */
   virtual void probeDevices( void );
+
+  /*!
+    Protected, api-specific method that attempts to list all device
+    in a system without probing.
+  */
+  virtual void listDevices( void );
   
   /*!
     Protected, api-specific method that attempts to open a device
@@ -914,8 +928,10 @@ protected:
 inline RtAudio::Api RtAudio :: getCurrentApi( void ) { return rtapi_->getCurrentApi(); }
 inline unsigned int RtAudio :: getDeviceCount( void ) { return rtapi_->getDeviceCount(); }
 inline RtAudio::DeviceInfo RtAudio :: getDeviceInfo( unsigned int deviceId ) { return rtapi_->getDeviceInfo( deviceId ); }
+inline RtAudio::DeviceInfo RtAudio :: getDeviceInfoNoProbe( unsigned int deviceId ) { return rtapi_->getDeviceInfoNoProbe( deviceId ); }
 inline RtAudio::DeviceInfo RtAudio::getDeviceInfoByBusID(std::string busID) { return rtapi_->getDeviceInfoByBusID(busID); }
 inline std::vector<unsigned int> RtAudio :: getDeviceIds( void ) { return rtapi_->getDeviceIds(); }
+inline std::vector<unsigned int> RtAudio::getDeviceIdsNoProbe(void) { return rtapi_->getDeviceIdsNoProbe(); }
 inline std::vector<std::string> RtAudio :: getDeviceNames( void ) { return rtapi_->getDeviceNames(); }
 inline unsigned int RtAudio :: getDefaultInputDevice( void ) { return rtapi_->getDefaultInputDevice(); }
 inline unsigned int RtAudio :: getDefaultOutputDevice( void ) { return rtapi_->getDefaultOutputDevice(); }
