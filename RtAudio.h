@@ -477,7 +477,7 @@ class RTAUDIO_DLL_PUBLIC RtAudio
   */
   RtAudio::DeviceInfo getDeviceInfo( unsigned int deviceId );
 
-  RtAudio::DeviceInfo RtAudio :: getDeviceInfoNoProbe( unsigned int deviceId );
+  RtAudio::DeviceInfo getDeviceInfoNoProbe( unsigned int deviceId );
 
   //! Return an RtAudio::DeviceInfo structure for a specified device bus ID.
   RtAudio::DeviceInfo getDeviceInfoByBusID(std::string busID);
