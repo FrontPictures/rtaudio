@@ -4781,6 +4781,9 @@ struct WasapiHandle
   IAudioRenderClient* renderClient;
   HANDLE captureEvent;
   HANDLE renderEvent;
+  AUDCLNT_SHAREMODE mode;
+  WAVEFORMATEX* renderFormat;
+  REFERENCE_TIME bufferDuration;
 
   WasapiHandle()
   : captureAudioClient( NULL ),
@@ -4788,7 +4791,10 @@ struct WasapiHandle
     captureClient( NULL ),
     renderClient( NULL ),
     captureEvent( NULL ),
-    renderEvent( NULL ) {}
+    renderEvent( NULL ),
+    mode(AUDCLNT_SHAREMODE_SHARED),
+    renderFormat( NULL ),
+    bufferDuration(0){}
 };
 
 //-----------------------------------------------------------------------------
@@ -5258,20 +5264,23 @@ void RtApiWasapi::closeStream( void )
 
   // clean up stream memory
   if (stream_.apiHandle) {
-      SAFE_RELEASE(((WasapiHandle*)stream_.apiHandle)->captureAudioClient)
-          SAFE_RELEASE(((WasapiHandle*)stream_.apiHandle)->renderAudioClient)
+    SAFE_RELEASE(((WasapiHandle*)stream_.apiHandle)->captureAudioClient)
+    SAFE_RELEASE(((WasapiHandle*)stream_.apiHandle)->renderAudioClient);
+    SAFE_RELEASE(((WasapiHandle*)stream_.apiHandle)->captureClient);
+    SAFE_RELEASE(((WasapiHandle*)stream_.apiHandle)->renderClient);
+    if (((WasapiHandle*)stream_.apiHandle)->renderFormat) {
+      CoTaskMemFree(((WasapiHandle*)stream_.apiHandle)->renderFormat);
+      ((WasapiHandle*)stream_.apiHandle)->renderFormat = NULL;
+    }
 
-          SAFE_RELEASE(((WasapiHandle*)stream_.apiHandle)->captureClient)
-          SAFE_RELEASE(((WasapiHandle*)stream_.apiHandle)->renderClient)
+    if (((WasapiHandle*)stream_.apiHandle)->captureEvent)
+      CloseHandle(((WasapiHandle*)stream_.apiHandle)->captureEvent);
 
-          if (((WasapiHandle*)stream_.apiHandle)->captureEvent)
-              CloseHandle(((WasapiHandle*)stream_.apiHandle)->captureEvent);
+    if (((WasapiHandle*)stream_.apiHandle)->renderEvent)
+      CloseHandle(((WasapiHandle*)stream_.apiHandle)->renderEvent);
 
-      if (((WasapiHandle*)stream_.apiHandle)->renderEvent)
-          CloseHandle(((WasapiHandle*)stream_.apiHandle)->renderEvent);
-
-      delete (WasapiHandle*)stream_.apiHandle;
-      stream_.apiHandle = NULL;
+    delete (WasapiHandle*)stream_.apiHandle;
+    stream_.apiHandle = NULL;
   }
 
   for ( int i = 0; i < 2; i++ ) {
@@ -5392,6 +5401,72 @@ RtAudioErrorType RtApiWasapi::abortStream( void )
 }
 
 //-----------------------------------------------------------------------------
+
+bool NegotiateExclusiveFormat(IAudioClient* renderAudioClient, WAVEFORMATEX** format) {
+  HRESULT hr = S_OK;
+  hr = renderAudioClient->GetMixFormat(format);
+  if (FAILED(hr)) {
+    goto negotiate_error;
+  }
+  hr = renderAudioClient->IsFormatSupported(AUDCLNT_SHAREMODE_EXCLUSIVE, *format, nullptr);
+  if (hr == AUDCLNT_E_UNSUPPORTED_FORMAT) {
+    if ((*format)->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) {
+      (*format)->wFormatTag = WAVE_FORMAT_PCM;
+      (*format)->wBitsPerSample = 16;
+      (*format)->nBlockAlign = (*format)->nChannels * (*format)->wBitsPerSample / 8;
+      (*format)->nAvgBytesPerSec = (*format)->nSamplesPerSec * (*format)->nBlockAlign;
+    }
+    else if ((*format)->wFormatTag == WAVE_FORMAT_EXTENSIBLE && reinterpret_cast<WAVEFORMATEXTENSIBLE*>((*format))->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) {
+      WAVEFORMATEXTENSIBLE* waveFormatExtensible = reinterpret_cast<WAVEFORMATEXTENSIBLE*>((*format));
+      waveFormatExtensible->SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
+      waveFormatExtensible->Format.wBitsPerSample = 16;
+      waveFormatExtensible->Format.nBlockAlign = ((*format)->wBitsPerSample / 8) * (*format)->nChannels;
+      waveFormatExtensible->Format.nAvgBytesPerSec = waveFormatExtensible->Format.nSamplesPerSec * waveFormatExtensible->Format.nBlockAlign;
+      waveFormatExtensible->Samples.wValidBitsPerSample = 16;
+    }
+    else {
+      goto negotiate_error;
+    }   
+    hr = renderAudioClient->IsFormatSupported(AUDCLNT_SHAREMODE_EXCLUSIVE, *format, nullptr);
+  }
+  if (FAILED(hr)) {
+    goto negotiate_error;
+  }
+  return true;
+negotiate_error:
+  if (*format) {    
+    CoTaskMemFree(*format);
+    (*format) = nullptr;
+  }
+  return false;
+}
+
+RtAudioFormat GetRtAudioTypeFromWasapi(WAVEFORMATEX* format) {
+  if (format->wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
+    WAVEFORMATEXTENSIBLE* waveFormatExtensible = reinterpret_cast<WAVEFORMATEXTENSIBLE*>(format);
+    if (waveFormatExtensible->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) {
+      if (waveFormatExtensible->Format.wBitsPerSample == 32) {
+        return RTAUDIO_FLOAT32;
+      }
+    }
+    else if (waveFormatExtensible->SubFormat == KSDATAFORMAT_SUBTYPE_PCM) {
+      if (waveFormatExtensible->Format.wBitsPerSample == 16) {
+        return RTAUDIO_SINT16;
+      }
+    }
+  }
+  else if (format->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) {
+    if (format->wBitsPerSample == 32) {
+      return RTAUDIO_FLOAT32;
+    }
+  }
+  else if (format->wFormatTag == WAVE_FORMAT_PCM) {
+    if (format->wBitsPerSample == 16) {
+      return RTAUDIO_SINT16;
+    }
+  }
+  return 0;
+}
 
 bool RtApiWasapi::probeDeviceOpen( unsigned int deviceId, StreamMode mode, unsigned int channels,
                                    unsigned int firstChannel, unsigned int sampleRate,
@@ -5517,7 +5592,93 @@ bool RtApiWasapi::probeDeviceOpen( unsigned int deviceId, StreamMode mode, unsig
     }
 
     stream_.nDeviceChannels[mode] = deviceFormat->nChannels;
-    renderAudioClient->GetStreamLatency( ( long long* ) &stream_.latency[mode] );
+    renderAudioClient->GetStreamLatency( ( long long* ) &stream_.latency[mode] );    
+  }
+  
+  if (options && options->flags & RTAUDIO_HOG_DEVICE) {
+    if (isInput == false && mode == INPUT) {
+      errorText_ = "RtApiWasapi::probeDeviceOpen: Exclusive device not supports loopback.";
+      goto Exit;
+    }
+    REFERENCE_TIME defaultBufferDuration = 0;
+    REFERENCE_TIME minimumBufferDuration = 0;
+    IAudioClient* audioClient = NULL;
+
+    if (isInput) {
+      audioClient = ((WasapiHandle*)stream_.apiHandle)->captureAudioClient;
+    }
+    else {
+      audioClient = ((WasapiHandle*)stream_.apiHandle)->renderAudioClient;
+    }
+    if (!audioClient) {
+      errorText_ = "RtApiWasapi::probeDeviceOpen: Audio client is null";
+      goto Exit;
+    }
+
+    hr = audioClient->GetDevicePeriod(&defaultBufferDuration, &minimumBufferDuration);
+    if (FAILED(hr)) {
+      errorText_ = "RtApiWasapi::probeDeviceOpen: Unable to retrieve device period.";
+      goto Exit;
+    }
+
+    bool res = NegotiateExclusiveFormat(audioClient, &deviceFormat);
+    if (res == false) {
+      errorText_ = "RtApiWasapi::probeDeviceOpen: Unable to negotiate format for exclusive device.";
+      goto Exit;
+    }
+    if (sampleRate != deviceFormat->nSamplesPerSec) {
+      errorText_ = "RtApiWasapi::probeDeviceOpen: samplerate exclusive mismatch.";
+      goto Exit;
+    }
+    REFERENCE_TIME userBufferSize = ((uint64_t)(*bufferSize) * 10000000 / deviceFormat->nSamplesPerSec);
+    if (userBufferSize == 0) {
+      userBufferSize = defaultBufferDuration;
+    }
+    if (userBufferSize < minimumBufferDuration) {
+      userBufferSize = minimumBufferDuration;
+    }
+    hr = audioClient->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE,
+      AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+      userBufferSize,
+      userBufferSize,
+      deviceFormat,
+      NULL);
+    if (hr == AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED) {
+      UINT32 nFrames = 0;
+      hr = audioClient->GetBufferSize(&nFrames);
+      if (FAILED(hr)) {
+        errorText_ = "RtApiWasapi::probeDeviceOpen: Unable to get buffer size.";
+        goto Exit;
+      }
+      constexpr int REFTIMES_PER_SEC = 10000000;
+      userBufferSize = (REFERENCE_TIME)((double)REFTIMES_PER_SEC / deviceFormat->nSamplesPerSec * nFrames + 0.5);
+      hr = audioClient->Initialize(
+        AUDCLNT_SHAREMODE_EXCLUSIVE,
+        AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+        userBufferSize,
+        userBufferSize,
+        deviceFormat,
+        NULL);
+    }
+    if (FAILED(hr)) {
+      errorText_ = "RtApiWasapi::probeDeviceOpen: Unable to open device.";
+      goto Exit;
+    }
+
+    UINT32 nFrames = 0;
+    hr = audioClient->GetBufferSize(&nFrames);
+    if (FAILED(hr)) {
+      errorText_ = "RtApiWasapi::probeDeviceOpen: Unable to get buffer size.";
+      goto Exit;
+    }
+    *bufferSize = nFrames;
+    ((WasapiHandle*)stream_.apiHandle)->mode = AUDCLNT_SHAREMODE_EXCLUSIVE;
+    if (((WasapiHandle*)stream_.apiHandle)->renderFormat) {
+      CoTaskMemFree(((WasapiHandle*)stream_.apiHandle)->renderFormat);
+      ((WasapiHandle*)stream_.apiHandle)->renderFormat = NULL;
+    }
+    ((WasapiHandle*)stream_.apiHandle)->renderFormat = deviceFormat;
+    ((WasapiHandle*)stream_.apiHandle)->bufferDuration = userBufferSize;
   }
 
   // Fill stream data
@@ -5537,7 +5698,16 @@ bool RtApiWasapi::probeDeviceOpen( unsigned int deviceId, StreamMode mode, unsig
   stream_.nUserChannels[mode] = channels;
   stream_.channelOffset[mode] = firstChannel;
   stream_.userFormat = format;
-  stream_.deviceFormat[mode] = deviceList_[deviceIdx].nativeFormats;
+  if (((WasapiHandle*)stream_.apiHandle)->mode == AUDCLNT_SHAREMODE_SHARED) {
+    stream_.deviceFormat[mode] = deviceList_[deviceIdx].nativeFormats;
+  }
+  else {
+    stream_.deviceFormat[mode] = GetRtAudioTypeFromWasapi(((WasapiHandle*)stream_.apiHandle)->renderFormat);
+    if (stream_.deviceFormat[mode] == 0) {
+      errorText_ = "RtApiWasapi::probeDeviceOpen: Hardware audio format not implemented.";
+      goto Exit;
+    }
+  }
 
   if ( options && options->flags & RTAUDIO_NONINTERLEAVED )
     stream_.userInterleaved = false;
@@ -5574,14 +5744,13 @@ bool RtApiWasapi::probeDeviceOpen( unsigned int deviceId, StreamMode mode, unsig
     stream_.callbackInfo.priority = 0;
 
   ///! TODO: RTAUDIO_MINIMIZE_LATENCY // Provide stream buffers directly to callback
-  ///! TODO: RTAUDIO_HOG_DEVICE       // Exclusive mode
+  ///! TODO: RTAUDIO_HOG_DEVICE       // Exclusive mode  
 
   methodResult = SUCCESS;
 
  Exit:
   //clean up
-  SAFE_RELEASE( devicePtr );
-  CoTaskMemFree( deviceFormat );
+  SAFE_RELEASE( devicePtr );  
 
   // if method failed, close the stream
   if ( methodResult == FAILURE )
@@ -5624,7 +5793,7 @@ DWORD WINAPI RtApiWasapi::abortWasapiThread( void* wasapiPtr )
   return 0;
 }
 
-//-----------------------------------------------------------------------------
+//----------------------------------------------------------------------------- 
 
 void RtApiWasapi::wasapiThread()
 {
@@ -5635,10 +5804,14 @@ void RtApiWasapi::wasapiThread()
 
   IAudioClient* captureAudioClient = ( ( WasapiHandle* ) stream_.apiHandle )->captureAudioClient;
   IAudioClient* renderAudioClient = ( ( WasapiHandle* ) stream_.apiHandle )->renderAudioClient;
+  IAudioClient3* renderAudioClient3 = nullptr;
   IAudioCaptureClient* captureClient = ( ( WasapiHandle* ) stream_.apiHandle )->captureClient;
+  IAudioClient3* captureAudioClient3 = nullptr;
   IAudioRenderClient* renderClient = ( ( WasapiHandle* ) stream_.apiHandle )->renderClient;
   HANDLE captureEvent = ( ( WasapiHandle* ) stream_.apiHandle )->captureEvent;
   HANDLE renderEvent = ( ( WasapiHandle* ) stream_.apiHandle )->renderEvent;
+  AUDCLNT_SHAREMODE shareMode = ((WasapiHandle*)stream_.apiHandle)->mode;
+  WAVEFORMATEX* exclusiveFormat = ((WasapiHandle*)stream_.apiHandle)->renderFormat;
 
   WAVEFORMATEX* captureFormat = NULL;
   WAVEFORMATEX* renderFormat = NULL;
@@ -5670,6 +5843,8 @@ void RtApiWasapi::wasapiThread()
   std::string errorText;
   RtAudioErrorType errorType = RTAUDIO_DRIVER_ERROR;
 
+  REFERENCE_TIME defaultBufferDuration = ((WasapiHandle*)stream_.apiHandle)->bufferDuration;
+
   // Attempt to assign "Pro Audio" characteristic to thread
   HMODULE AvrtDll = LoadLibraryW( L"AVRT.dll" );
   if ( AvrtDll ) {
@@ -5695,10 +5870,9 @@ void RtApiWasapi::wasapiThread()
 
     captureSrRatio = ( ( float ) captureFormat->nSamplesPerSec / stream_.sampleRate );
 
-    if ( !captureClient ) {
-      IAudioClient3* captureAudioClient3 = nullptr;
+    if ( !captureClient ) {      
       captureAudioClient->QueryInterface( __uuidof( IAudioClient3 ), ( void** ) &captureAudioClient3 );
-      if ( captureAudioClient3 && !loopbackEnabled )
+      if ( captureAudioClient3 && !loopbackEnabled && shareMode == AUDCLNT_SHAREMODE_SHARED)
       {
         UINT32 Ignore;
         UINT32 MinPeriodInFrames;
@@ -5717,7 +5891,7 @@ void RtApiWasapi::wasapiThread()
                                                                captureFormat,
                                                                NULL );
       }
-      else
+      else if (shareMode == AUDCLNT_SHAREMODE_SHARED)
       {
         hr = captureAudioClient->Initialize( AUDCLNT_SHAREMODE_SHARED,
                                              loopbackEnabled ? AUDCLNT_STREAMFLAGS_LOOPBACK : AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
@@ -5807,9 +5981,9 @@ void RtApiWasapi::wasapiThread()
     renderSrRatio = ( ( float ) renderFormat->nSamplesPerSec / stream_.sampleRate );
 
     if ( !renderClient ) {
-      IAudioClient3* renderAudioClient3 = nullptr;
+      
       renderAudioClient->QueryInterface( __uuidof( IAudioClient3 ), ( void** ) &renderAudioClient3 );
-      if ( renderAudioClient3 )
+      if ( renderAudioClient3 && shareMode == AUDCLNT_SHAREMODE_SHARED)
       {
         UINT32 Ignore;
         UINT32 MinPeriodInFrames;
@@ -5827,18 +6001,18 @@ void RtApiWasapi::wasapiThread()
                                                               MinPeriodInFrames,
                                                               renderFormat,
                                                               NULL );
-      }
-      else
-      {
-        hr = renderAudioClient->Initialize( AUDCLNT_SHAREMODE_SHARED,
-                                            AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-                                            0,
-                                            0,
-                                            renderFormat,
-                                            NULL );
-      }
 
-      if ( FAILED( hr ) ) {
+      }
+      else if (shareMode == AUDCLNT_SHAREMODE_SHARED)
+      {        
+        hr = renderAudioClient->Initialize(shareMode,
+          AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+          shareMode == AUDCLNT_SHAREMODE_EXCLUSIVE ? defaultBufferDuration : 0,
+          shareMode == AUDCLNT_SHAREMODE_EXCLUSIVE ? defaultBufferDuration : 0,
+          exclusiveFormat,
+          NULL);
+      }
+      if ( FAILED( hr ) && (hr != AUDCLNT_E_ALREADY_INITIALIZED && shareMode == AUDCLNT_SHAREMODE_EXCLUSIVE)) {
         errorText = "RtApiWasapi::wasapiThread: Unable to initialize render audio client.";
         goto Exit;
       }
@@ -5875,6 +6049,13 @@ void RtApiWasapi::wasapiThread()
       }
 
       // start the render stream
+      {
+          BYTE* pData = nullptr;
+          UINT32 bufferSize = 0;
+          renderAudioClient->GetBufferSize(&bufferSize);
+          hr = renderClient->GetBuffer(bufferSize, &pData);
+          hr = renderClient->ReleaseBuffer(bufferSize, 0);
+      }
       hr = renderAudioClient->Start();
       if ( FAILED( hr ) ) {
         errorText = "RtApiWasapi::wasapiThread: Unable to start render stream.";
@@ -6092,7 +6273,7 @@ void RtApiWasapi::wasapiThread()
 
     if ( captureAudioClient ) {
       // if the callback input buffer was not pulled from captureBuffer, wait for next capture event
-      if ( !callbackPulled ) {
+      if ( !callbackPulled || shareMode == AUDCLNT_SHAREMODE_EXCLUSIVE) {
         WaitForSingleObject( loopbackEnabled ? renderEvent : captureEvent, INFINITE );
       }
 
@@ -6148,7 +6329,7 @@ void RtApiWasapi::wasapiThread()
 
     if ( renderAudioClient ) {
       // if the callback output buffer was not pushed to renderBuffer, wait for next render event
-      if ( callbackPulled && !callbackPushed ) {
+      if ( (callbackPulled && !callbackPushed) || shareMode == AUDCLNT_SHAREMODE_EXCLUSIVE) {
         WaitForSingleObject( renderEvent, INFINITE );
       }
 
@@ -6164,8 +6345,10 @@ void RtApiWasapi::wasapiThread()
         errorText = "RtApiWasapi::wasapiThread: Unable to retrieve render buffer padding.";
         goto Exit;
       }
-
-      bufferFrameCount -= numFramesPadding;
+      
+      if (shareMode == AUDCLNT_SHAREMODE_SHARED) {
+        bufferFrameCount -= numFramesPadding;
+      }      
 
       if ( bufferFrameCount != 0 ) {
         hr = renderClient->GetBuffer( bufferFrameCount, &streamBuffer );
@@ -6219,6 +6402,8 @@ void RtApiWasapi::wasapiThread()
 
 Exit:
   // clean up
+  SAFE_RELEASE(renderAudioClient3);
+  SAFE_RELEASE(captureAudioClient3);
   CoTaskMemFree( captureFormat );
   CoTaskMemFree( renderFormat );
 
