@@ -225,6 +225,16 @@ typedef int (*RtAudioCallback)( void *outputBuffer, void *inputBuffer,
                                 RtAudioStreamStatus status,
                                 void *userData );
 
+enum RtAudioDeviceParam {
+  DEFAULT_CHANGED,
+  DEVICE_ADDED,
+  DEVICE_REMOVED,
+  DEVICE_STATE_CHANGED,
+  DEVICE_PROPERTY_CHANGED
+};
+
+typedef void (*RtAudioDeviceCallback)(unsigned int deviceId, RtAudioDeviceParam param, void* userData);
+
 enum RtAudioErrorType {
   RTAUDIO_NO_ERROR = 0,      /*!< No error. */
   RTAUDIO_WARNING,           /*!< A non-critical error. */
@@ -593,6 +603,9 @@ class RTAUDIO_DLL_PUBLIC RtAudio
   */
   RtAudioErrorType abortStream( void );
 
+  RtAudioErrorType registerExtraCallback(RtAudioDeviceCallback callback, void* userData);
+  RtAudioErrorType unregisterExtraCallback();
+
   //! Retrieve the error message corresponding to the last error or warning condition.
   /*!
     This function can be used to get a detailed error message when a
@@ -777,6 +790,8 @@ public:
   virtual RtAudioErrorType startStream( void ) = 0;
   virtual RtAudioErrorType stopStream( void ) = 0;
   virtual RtAudioErrorType abortStream( void ) = 0;
+  virtual RtAudioErrorType registerExtraCallback(RtAudioDeviceCallback callback, void* userData);
+  virtual RtAudioErrorType unregisterExtraCallback();
   const std::string getErrorText( void ) const { return errorText_; }
   long getStreamLatency( void );
   unsigned int getStreamSampleRate( void );
@@ -939,6 +954,14 @@ inline void RtAudio :: closeStream( void ) { return rtapi_->closeStream(); }
 inline RtAudioErrorType RtAudio :: startStream( void ) { return rtapi_->startStream(); }
 inline RtAudioErrorType RtAudio :: stopStream( void )  { return rtapi_->stopStream(); }
 inline RtAudioErrorType RtAudio :: abortStream( void ) { return rtapi_->abortStream(); }
+inline RtAudioErrorType RtAudio::registerExtraCallback(RtAudioDeviceCallback callback, void* userData)
+{
+    return rtapi_->registerExtraCallback(callback, userData);
+}
+inline RtAudioErrorType RtAudio::unregisterExtraCallback()
+{
+    return rtapi_->unregisterExtraCallback();
+}
 inline const std::string RtAudio :: getErrorText( void ) { return rtapi_->getErrorText(); }
 inline bool RtAudio :: isStreamOpen( void ) const { return rtapi_->isStreamOpen(); }
 inline bool RtAudio :: isStreamRunning( void ) const { return rtapi_->isStreamRunning(); }
