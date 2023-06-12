@@ -242,8 +242,52 @@ public:
 #endif
 
 #if defined(__WINDOWS_WASAPI__)
+#include <mmdeviceapi.h>
 
-struct IMMDeviceEnumerator;
+class RtApiWasapi;
+
+class NotificationHandler : public IMMNotificationClient {
+private:
+    RtAudioDeviceCallback callback_ = nullptr;
+    void* userData_ = nullptr;
+    RtApiWasapi* wasapi_;
+public:
+  NotificationHandler(RtApiWasapi* wasapi);
+  void setCallback(RtAudioDeviceCallback callback, void* userData);
+  HRESULT STDMETHODCALLTYPE OnDefaultDeviceChanged(
+    EDataFlow flow,
+    ERole     role,
+    LPCWSTR   pwstrDefaultDeviceId
+  ) override;
+  HRESULT STDMETHODCALLTYPE OnDeviceAdded(
+    LPCWSTR pwstrDeviceId
+  ) override;
+  HRESULT STDMETHODCALLTYPE OnDeviceRemoved(
+    LPCWSTR pwstrDeviceId
+  ) override;
+  HRESULT STDMETHODCALLTYPE OnDeviceStateChanged(
+    LPCWSTR pwstrDeviceId,
+    DWORD   dwNewState
+  ) override;
+  HRESULT STDMETHODCALLTYPE OnPropertyValueChanged(
+    LPCWSTR           pwstrDeviceId,
+    const PROPERTYKEY key
+  ) override;
+
+  HRESULT STDMETHODCALLTYPE QueryInterface(
+    REFIID riid,
+    _COM_Outptr_ void __RPC_FAR* __RPC_FAR* ppvObject) override {
+    return E_NOINTERFACE;
+  }
+
+  ULONG STDMETHODCALLTYPE AddRef(void) override {
+    return 1;
+  }
+
+  ULONG STDMETHODCALLTYPE Release(void) override {
+    return 1;
+  }
+};
 
 class RtApiWasapi : public RtApi
 {
@@ -257,10 +301,14 @@ public:
   RtAudioErrorType startStream( void ) override;
   RtAudioErrorType stopStream( void ) override;
   RtAudioErrorType abortStream( void ) override;
+  RtAudioErrorType registerExtraCallback(RtAudioDeviceCallback callback, void* userData) override;
+  RtAudioErrorType unregisterExtraCallback() override;
 
 private:
   bool coInitialized_;
   IMMDeviceEnumerator* deviceEnumerator_;
+  RtAudioDeviceCallback callbackExtra_ = nullptr;
+  NotificationHandler wasapiNotificationHandler_;
   std::vector< std::pair< std::string, bool> > deviceIds_;
 
   void probeDevices( void ) override;
@@ -275,6 +323,74 @@ private:
   static DWORD WINAPI abortWasapiThread( void* wasapiPtr );
   void wasapiThread();
 };
+
+NotificationHandler::NotificationHandler(RtApiWasapi* wasapi) : wasapi_(wasapi) {
+
+}
+
+void NotificationHandler::setCallback(RtAudioDeviceCallback callback, void* userData) {
+  callback_ = callback;
+  userData_ = userData;
+}
+
+HRESULT STDMETHODCALLTYPE NotificationHandler::OnDefaultDeviceChanged(
+  EDataFlow flow,
+  ERole     role,
+  LPCWSTR   pwstrDefaultDeviceId
+) {
+  if (callback_ && role == eConsole && wasapi_) {
+    auto busId = convertCharPointerToStdString(pwstrDefaultDeviceId);
+    auto device = wasapi_->getDeviceInfoByBusID(busId);
+    callback_(device.ID, RtAudioDeviceParam::DEFAULT_CHANGED, userData_);
+  }
+  return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE NotificationHandler::OnDeviceAdded(
+  LPCWSTR pwstrDeviceId
+) {
+  if (callback_ && wasapi_ && pwstrDeviceId) {
+    wasapi_->getDeviceIds();
+    auto busId = convertCharPointerToStdString(pwstrDeviceId);
+    auto device = wasapi_->getDeviceInfoByBusID(busId);
+    callback_(device.ID, RtAudioDeviceParam::DEVICE_ADDED, userData_);
+  }
+  return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE NotificationHandler::OnDeviceRemoved(
+  LPCWSTR pwstrDeviceId
+) {
+  if (callback_ && wasapi_ && pwstrDeviceId) {
+    auto busId = convertCharPointerToStdString(pwstrDeviceId);
+    auto device = wasapi_->getDeviceInfoByBusID(busId);
+    wasapi_->getDeviceIds();
+    callback_(device.ID, RtAudioDeviceParam::DEVICE_REMOVED, userData_);
+  }
+  return S_OK;
+}
+HRESULT STDMETHODCALLTYPE NotificationHandler::OnDeviceStateChanged(
+  LPCWSTR pwstrDeviceId,
+  DWORD   dwNewState
+) {
+  if (callback_ && wasapi_ && pwstrDeviceId) {
+    auto busId = convertCharPointerToStdString(pwstrDeviceId);
+    auto device = wasapi_->getDeviceInfoByBusID(busId);
+    callback_(device.ID, RtAudioDeviceParam::DEVICE_STATE_CHANGED, userData_);
+  }
+  return S_OK;
+}
+HRESULT STDMETHODCALLTYPE NotificationHandler::OnPropertyValueChanged(
+  LPCWSTR           pwstrDeviceId,
+  const PROPERTYKEY key
+) {
+  if (callback_ && wasapi_ && pwstrDeviceId) {
+    auto busId = convertCharPointerToStdString(pwstrDeviceId);
+    auto device = wasapi_->getDeviceInfoByBusID(busId);
+    callback_(device.ID, RtAudioDeviceParam::DEVICE_PROPERTY_CHANGED, userData_);
+  }
+  return S_OK;
+}
 
 #endif
 
@@ -916,6 +1032,16 @@ void RtApi :: tickStreamTime( void )
   gettimeofday( &stream_.lastTickTimestamp, NULL );
 #endif
   */
+}
+
+RtAudioErrorType RtApi::registerExtraCallback(RtAudioDeviceCallback callback, void* userData)
+{
+    return RTAUDIO_UNKNOWN_ERROR;
+}
+
+RtAudioErrorType RtApi::unregisterExtraCallback()
+{
+    return RTAUDIO_UNKNOWN_ERROR;
 }
 
 long RtApi :: getStreamLatency( void )
@@ -4800,7 +4926,7 @@ struct WasapiHandle
 //-----------------------------------------------------------------------------
 
 RtApiWasapi::RtApiWasapi()
-  : coInitialized_( false ), deviceEnumerator_( NULL )
+  : coInitialized_( false ), deviceEnumerator_( NULL ), wasapiNotificationHandler_(this)
 {
   // WASAPI can run either apartment or multi-threaded
   HRESULT hr = CoInitialize( NULL );
@@ -4829,6 +4955,8 @@ RtApiWasapi::~RtApiWasapi()
     MUTEX_LOCK( &stream_.mutex );
   }
 
+  if (callbackExtra_)
+    unregisterExtraCallback();
   SAFE_RELEASE( deviceEnumerator_ );
 
   // If this object previously called CoInitialize()
@@ -5398,6 +5526,33 @@ RtAudioErrorType RtApiWasapi::abortStream( void )
   stream_.callbackInfo.thread = (ThreadHandle) NULL;
   MUTEX_UNLOCK( &stream_.mutex );
   return RTAUDIO_NO_ERROR;
+}
+
+RtAudioErrorType RtApiWasapi::registerExtraCallback(RtAudioDeviceCallback callback, void* userData)
+{
+    if (callbackExtra_) {
+        return RTAUDIO_INVALID_USE;
+    }
+    callbackExtra_ = callback;
+    wasapiNotificationHandler_.setCallback(callbackExtra_, userData);
+    HRESULT hr = deviceEnumerator_->RegisterEndpointNotificationCallback(&wasapiNotificationHandler_);
+    if (FAILED(hr)) {
+        return RTAUDIO_SYSTEM_ERROR;
+    }
+    return RTAUDIO_NO_ERROR;
+}
+
+RtAudioErrorType RtApiWasapi::unregisterExtraCallback()
+{
+    if (!callbackExtra_) {
+        return RTAUDIO_INVALID_USE;
+    }
+    callbackExtra_ = nullptr;
+    HRESULT hr = deviceEnumerator_->UnregisterEndpointNotificationCallback(&wasapiNotificationHandler_);
+    if (FAILED(hr)) {
+        return RTAUDIO_SYSTEM_ERROR;
+    }
+    return RTAUDIO_NO_ERROR;
 }
 
 //-----------------------------------------------------------------------------
