@@ -9835,6 +9835,13 @@ bool RtApiPulse::probeDeviceOpen( unsigned int deviceId, StreamMode mode,
   pah = static_cast<PulseAudioHandle *>( stream_.apiHandle );
 
   int error;
+  struct pa_channel_map mapping;
+  mapping = {};
+  if (pa_channel_map_init_extend(&mapping, ss.channels, PA_CHANNEL_MAP_WAVEEX) == NULL){
+      errorText_ = "RtApiPulse::probeDeviceOpen: error mapping.";
+      goto error;
+  }
+
   if ( options && !options->streamName.empty() ) streamName = options->streamName;
   switch ( mode ) {
     pa_buffer_attr buffer_attr;
@@ -9843,7 +9850,7 @@ bool RtApiPulse::probeDeviceOpen( unsigned int deviceId, StreamMode mode,
     buffer_attr.maxlength = -1;
 
     pah->s_rec = pa_simple_new( NULL, streamName.c_str(), PA_STREAM_RECORD,
-                                dev_input, "Record", &ss, NULL, &buffer_attr, &error );
+                                dev_input, "Record", &ss, &mapping, &buffer_attr, &error );
     if ( !pah->s_rec ) {
       errorText_ = "RtApiPulse::probeDeviceOpen: error connecting input to PulseAudio server.";
       goto error;
@@ -9865,7 +9872,7 @@ bool RtApiPulse::probeDeviceOpen( unsigned int deviceId, StreamMode mode,
     }
 
     pah->s_play = pa_simple_new( NULL, streamName.c_str(), PA_STREAM_PLAYBACK,
-                                 dev_output, "Playback", &ss, NULL, attr_ptr, &error );
+                                 dev_output, "Playback", &ss, &mapping, attr_ptr, &error );
     if ( !pah->s_play ) {
       errorText_ = "RtApiPulse::probeDeviceOpen: error connecting output to PulseAudio server.";
       goto error;
