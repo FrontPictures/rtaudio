@@ -98,7 +98,7 @@ file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/configure.ac" CONFIGAC
 string(REGEX REPLACE "${R}" "\\1" PACKAGE_VERSION "${CONFIGAC}")
 
 # Init variables
-set(rtaudio_SOURCES RtAudio.cpp RtAudio.h rtaudio_c.cpp rtaudio_c.h)
+set(rtaudio_SOURCES RtAudio.cpp RtAudio.h rtaudio_c.cpp rtaudio_c.h utils.cpp utils.h)
 set(LINKLIBS)
 set(PKGCONFIG_REQUIRES)
 set(LIBS_REQUIRES)
@@ -196,6 +196,7 @@ if (RTAUDIO_API_WASAPI)
   list(APPEND LINKLIBS ksuser mfplat mfuuid wmcodecdspuuid)
   list(APPEND API_DEFS "-D__WINDOWS_WASAPI__")
   list(APPEND API_LIST "wasapi")
+  list(APPEND rtaudio_SOURCES "RtAudioWasapi.cpp" "RtAudioWasapi.h")
 endif()
 
 # Windows libs
