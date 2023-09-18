@@ -200,7 +200,9 @@ if (RTAUDIO_API_WASAPI)
   list(APPEND LINKLIBS ksuser mfplat mfuuid wmcodecdspuuid)
   list(APPEND API_DEFS "-D__WINDOWS_WASAPI__")
   list(APPEND API_LIST "wasapi")
-  list(APPEND rtaudio_SOURCES "RtAudioWasapi.cpp" "RtAudioWasapi.h" "WasapiResampler.cpp" "WasapiResampler.h" "WasapiBuffer.cpp" "WasapiBuffer.h")
+  list(APPEND rtaudio_SOURCES "RtAudioWasapi.cpp" "RtAudioWasapi.h" "WasapiResampler.cpp"
+    "WasapiResampler.h" "WasapiBuffer.cpp" "WasapiBuffer.h" "WasapiNotificationHandler.cpp"
+    "WasapiNotificationHandler.h")
 endif()
 
 # Windows libs
