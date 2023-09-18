@@ -14,3 +14,4 @@ build
 /tests/Makefile.in
 .vs
 out
+CMakeSettings.json

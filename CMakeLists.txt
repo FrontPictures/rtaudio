@@ -191,6 +191,7 @@ if (RTAUDIO_API_DS)
   list(APPEND LINKLIBS dsound)
   list(APPEND API_DEFS "-D__WINDOWS_DS__")
   list(APPEND API_LIST "ds")
+  list(APPEND rtaudio_SOURCES "directsound/RtApiDirectsound.cpp" "directsound/RtApiDirectsound.h")
 endif()
 
 # WASAPI
