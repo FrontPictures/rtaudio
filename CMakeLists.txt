@@ -34,6 +34,10 @@ if(MINGW)
   set(NEED_PTHREAD ON)
 endif()
 
+if(WIN32)
+  add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+endif()
+
 # Standard CMake options
 option(BUILD_SHARED_LIBS "Build as shared library" ON)
 

@@ -93,10 +93,10 @@ int output( void *outputBuffer, void * /*inputBuffer*/, unsigned int nBufferFram
   // In general, it's not a good idea to do file input in the audio
   // callback function but I'm doing it here because I don't know the
   // length of the file we are reading.
-  unsigned int count = fread( outputBuffer, oData->channels * sizeof( MY_TYPE ), nBufferFrames, oData->fd);
+  size_t count = fread( outputBuffer, oData->channels * sizeof( MY_TYPE ), nBufferFrames, oData->fd);
   if ( count < nBufferFrames ) {
-    unsigned int bytes = (nBufferFrames - count) * oData->channels * sizeof( MY_TYPE );
-    unsigned int startByte = count * oData->channels * sizeof( MY_TYPE );
+    size_t bytes = (nBufferFrames - count) * oData->channels * sizeof( MY_TYPE );
+    size_t startByte = count * oData->channels * sizeof( MY_TYPE );
     memset( (char *)(outputBuffer)+startByte, 0, bytes );
     return 1;
   }
