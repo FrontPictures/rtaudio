@@ -6,6 +6,8 @@
 // - Includes automatic internal conversion of sample rate and buffer size between hardware and the user
 
 #include "RtAudioWasapi.h"
+#include "WasapiResampler.h"
+#include "WasapiBuffer.h"
 
 namespace {
 #ifndef INITGUID
@@ -106,6 +108,33 @@ namespace {
     }
 
     typedef HANDLE(__stdcall* TAvSetMmThreadCharacteristicsPtr)(LPCWSTR TaskName, LPDWORD TaskIndex);
+
+    // A structure to hold various information related to the WASAPI implementation.
+    struct WasapiHandle
+    {
+        IAudioClient* captureAudioClient;
+        IAudioClient* renderAudioClient;
+        IAudioCaptureClient* captureClient;
+        IAudioRenderClient* renderClient;
+        HANDLE captureEvent;
+        HANDLE renderEvent;
+        AUDCLNT_SHAREMODE mode;
+        WAVEFORMATEX* renderFormat;
+        REFERENCE_TIME bufferDuration;
+
+        WasapiHandle()
+            : captureAudioClient(NULL),
+            renderAudioClient(NULL),
+            captureClient(NULL),
+            renderClient(NULL),
+            captureEvent(NULL),
+            renderEvent(NULL),
+            mode(AUDCLNT_SHAREMODE_SHARED),
+            renderFormat(NULL),
+            bufferDuration(0) {}
+    };
+
+
 }
 
 RtApiWasapi::RtApiWasapi()
