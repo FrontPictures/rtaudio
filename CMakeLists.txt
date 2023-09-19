@@ -49,7 +49,6 @@ option(RTAUDIO_BUILD_PYTHON "Build PyRtAudio python bindings" OFF)
 set(RTAUDIO_TARGETNAME_UNINSTALL "uninstall" CACHE STRING "Name of 'uninstall' build target")
 
 # API Options
-option(RTAUDIO_API_DS "Build DirectSound API" OFF)
 option(RTAUDIO_API_ASIO "Build ASIO API" OFF)
 option(RTAUDIO_API_WASAPI "Build WASAPI API" ${WIN32})
 option(RTAUDIO_API_ALSA "Build ALSA API" ${LINUX})
@@ -171,15 +170,6 @@ if (RTAUDIO_API_ASIO)
   list(APPEND API_DEFS "-D__WINDOWS_ASIO__")
   list(APPEND API_LIST "asio")
   list(APPEND rtaudio_SOURCES "asio/RtApiAsio.cpp" "asio/RtApiAsio.h")
-endif()
-
-# DSound
-if (RTAUDIO_API_DS)
-  set(NEED_WIN32LIBS ON)
-  list(APPEND LINKLIBS dsound)
-  list(APPEND API_DEFS "-D__WINDOWS_DS__")
-  list(APPEND API_LIST "ds")
-  list(APPEND rtaudio_SOURCES "directsound/RtApiDirectsound.cpp" "directsound/RtApiDirectsound.h")
 endif()
 
 # WASAPI

@@ -87,12 +87,6 @@ const unsigned int RtApi::SAMPLE_RATES[] = {
 
 #endif
 
-#if defined(__WINDOWS_DS__)
-
-#include "directsound/RtApiDirectsound.h"
-
-#endif
-
 #if defined(__WINDOWS_WASAPI__)
 
 #include "RtAudioWasapi.h"
@@ -156,7 +150,6 @@ const char* rtaudio_api_names[][2] = {
   { "pulse"       , "Pulse" },
   { "asio"        , "ASIO" },
   { "wasapi"      , "WASAPI" },
-  { "ds"          , "DirectSound" },
   { "dummy"       , "Dummy" },
 };
 
@@ -183,9 +176,6 @@ extern "C" const RtAudio::Api rtaudio_compiled_apis[] = {
 #endif
 #if defined(__WINDOWS_WASAPI__)
   RtAudio::WINDOWS_WASAPI,
-#endif
-#if defined(__WINDOWS_DS__)
-  RtAudio::WINDOWS_DS,
 #endif
 #if defined(__RTAUDIO_DUMMY__)
   RtAudio::RTAUDIO_DUMMY,
@@ -268,10 +258,6 @@ void RtAudio :: openRtApi( RtAudio::Api api )
 #if defined(__WINDOWS_WASAPI__)
   if ( api == WINDOWS_WASAPI )
     rtapi_ = new RtApiWasapi();
-#endif
-#if defined(__WINDOWS_DS__)
-  if ( api == WINDOWS_DS )
-    rtapi_ = new RtApiDs();
 #endif
 #if defined(__MACOSX_CORE__)
   if ( api == MACOSX_CORE )

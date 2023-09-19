@@ -287,7 +287,6 @@ class RTAUDIO_DLL_PUBLIC RtAudio
     LINUX_PULSE,    /*!< The Linux PulseAudio API. */
     WINDOWS_ASIO,   /*!< The Steinberg Audio Stream I/O API. */
     WINDOWS_WASAPI, /*!< The Microsoft WASAPI API. */
-    WINDOWS_DS,     /*!< The Microsoft DirectSound API. */
     RTAUDIO_DUMMY,  /*!< A compilable but non-functional API. */
     NUM_APIS        /*!< Number of values in this enum. */
   };
