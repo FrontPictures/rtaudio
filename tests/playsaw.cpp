@@ -43,219 +43,222 @@ typedef double MY_TYPE;
 
 // Platform-dependent sleep routines.
 #if defined( WIN32 )
-  #include <windows.h>
-  #define SLEEP( milliseconds ) Sleep( (DWORD) milliseconds ) 
+#include <windows.h>
+#define SLEEP( milliseconds ) Sleep( (DWORD) milliseconds ) 
 #else // Unix variants
-  #include <unistd.h>
-  #define SLEEP( milliseconds ) usleep( (unsigned long) (milliseconds * 1000.0) )
+#include <unistd.h>
+#define SLEEP( milliseconds ) usleep( (unsigned long) (milliseconds * 1000.0) )
 #endif
 
 // Interrupt handler function
 bool done;
-static void finish( int /*ignore*/ ){ done = true; }
+static void finish(int /*ignore*/) { done = true; }
 
 #define BASE_RATE 0.005
 #define TIME   1.0
 
-void usage( void ) {
-  // Error function in case of incorrect command-line
-  // argument specifications
-  std::cout << "\nuseage: playsaw N fs <device> <channelOffset> <time>\n";
-  std::cout << "    where N = number of channels,\n";
-  std::cout << "    fs = the sample rate,\n";
-  std::cout << "    device = optional device index to use (default = 0),\n";
-  std::cout << "    channelOffset = an optional channel offset on the device (default = 0),\n";
-  std::cout << "    and time = an optional time duration in seconds (default = no limit).\n\n";
-  exit( 0 );
+void usage(void) {
+    // Error function in case of incorrect command-line
+    // argument specifications
+    std::cout << "\nuseage: playsaw API N fs <device> <channelOffset> <time>\n";
+    std::cout << "    where API = name of audio API,\n";
+    std::cout << "    where N = number of channels,\n";
+    std::cout << "    fs = the sample rate,\n";
+    std::cout << "    device = optional device index to use (default = 0),\n";
+    std::cout << "    time = an optional time duration in milliseconds (default = 1000).\n\n";
+    exit(0);
 }
 
-void errorCallback( RtAudioErrorType /*type*/, const std::string &errorText )
+void errorCallback(RtAudioErrorType /*type*/, const std::string& errorText)
 {
-  // This example error handling function simply outputs the error message to stderr.
-  std::cerr << "\nerrorCallback: " << errorText << "\n\n";
+    // This example error handling function simply outputs the error message to stderr.
+    std::cerr << "\nerrorCallback: " << errorText << "\n\n";
 }
 
-unsigned int getDeviceIndex( std::vector<std::string> deviceNames )
+unsigned int getDeviceIndex(std::vector<std::string> deviceNames)
 {
-  unsigned int i;
-  std::string keyHit;
-  std::cout << '\n';
-  for ( i=0; i<deviceNames.size(); i++ )
-    std::cout << "  Device #" << i << ": " << deviceNames[i] << '\n';
-  do {
-    std::cout << "\nChoose a device #: ";
-    std::cin >> i;
-  } while ( i >= deviceNames.size() );
-  std::getline( std::cin, keyHit );  // used to clear out stdin
-  return i;
+    unsigned int i;
+    std::string keyHit;
+    std::cout << '\n';
+    for (i = 0; i < deviceNames.size(); i++)
+        std::cout << "  Device #" << i << ": " << deviceNames[i] << '\n';
+    do {
+        std::cout << "\nChoose a device #: ";
+        std::cin >> i;
+    } while (i >= deviceNames.size());
+    std::getline(std::cin, keyHit);  // used to clear out stdin
+    return i;
 }
 
-unsigned int channels;
-RtAudio::StreamOptions options;
-unsigned int frameCounter = 0;
-bool checkCount = false;
-unsigned int nFrames = 0;
-const unsigned int callbackReturnValue = 1; // 1 = stop and drain, 2 = abort
-double streamTimePrintIncrement = 1.0; // seconds
-double streamTimePrintTime = 1.0; // seconds
 
-#define USE_INTERLEAVED
-#if defined( USE_INTERLEAVED )
 
-// Interleaved buffers
-int saw( void *outputBuffer, void * /*inputBuffer*/, unsigned int nBufferFrames,
-         double streamTime, RtAudioStreamStatus status, void *data )
+
+inline float generate_sin(int x, int samplerate, float frequency, float amplitude)
 {
-  unsigned int i, j;
-  extern unsigned int channels;
-  MY_TYPE *buffer = (MY_TYPE *) outputBuffer;
-  double *lastValues = (double *) data;
+    const float t = 2.0 * 3.14 * frequency / samplerate;
+    return amplitude * sinf(t * x);
+}
 
-  if ( status )
-    std::cout << "Stream underflow detected!" << std::endl;
-
-  if ( streamTime >= streamTimePrintTime ) {
-    std::cout << "streamTime = " << streamTime << std::endl;
-    streamTimePrintTime += streamTimePrintIncrement;
-  }
-
-  for ( i=0; i<nBufferFrames; i++ ) {
-    for ( j=0; j<channels; j++ ) {
-      *buffer++ = (MY_TYPE) (lastValues[j] * SCALE * 0.5);
-      lastValues[j] += BASE_RATE * (j+1+(j*0.1));
-      if ( lastValues[j] >= 1.0 ) lastValues[j] -= 2.0;
+template<class T>
+void write_float_to_data(T** data_out, bool planar, int channels, float value, int sample,
+    bool mix = false, int dst_offset = 0)
+{
+    T val = 0;
+    if (std::is_integral_v<T>) {
+        int bits_count = sizeof(T) * 8;
+        uint64_t values_count = pow(2, bits_count);
+        if (std::is_signed_v<T>) {
+            uint64_t half_values_count = values_count / 2;
+            value *= half_values_count;
+        }
+        else if (std::is_unsigned_v<T>) {
+            value += 1;
+            value *= values_count;
+        }
+        val = value;
     }
-  }
-
-  frameCounter += nBufferFrames;
-  if ( checkCount && ( frameCounter >= nFrames ) ) return callbackReturnValue;
-  return 0;
-}
-
-#else // Use non-interleaved buffers
-
-int saw( void *outputBuffer, void * /*inputBuffer*/, unsigned int nBufferFrames,
-         double streamTime, RtAudioStreamStatus status, void *data )
-{
-  unsigned int i, j;
-  extern unsigned int channels;
-  MY_TYPE *buffer = (MY_TYPE *) outputBuffer;
-  double *lastValues = (double *) data;
-
-  if ( status )
-    std::cout << "Stream underflow detected!" << std::endl;
-
-  if ( streamTime >= streamTimePrintTime ) {
-    std::cout << "streamTime = " << streamTime << std::endl;
-    streamTimePrintTime += streamTimePrintIncrement;
-  }
-  
-  double increment;
-  for ( j=0; j<channels; j++ ) {
-    increment = BASE_RATE * (j+1+(j*0.1));
-    for ( i=0; i<nBufferFrames; i++ ) {
-      *buffer++ = (MY_TYPE) (lastValues[j] * SCALE * 0.5);
-      lastValues[j] += increment;
-      if ( lastValues[j] >= 1.0 ) lastValues[j] -= 2.0;
+    else if (std::is_floating_point_v<T>) {
+        val = value;
     }
-  }
-
-  frameCounter += nBufferFrames;
-  if ( checkCount && ( frameCounter >= nFrames ) ) return callbackReturnValue;
-  return 0;
+    for (int c = 0; c < channels; c++) {
+        if (planar) {
+            if (!mix)
+                data_out[c][sample + dst_offset] = val;
+            else
+                data_out[c][sample + dst_offset] += val;
+        }
+        else {
+            if (!mix)
+                data_out[0][channels * (sample + dst_offset) + c] = val;
+            else
+                data_out[0][channels * (sample + dst_offset) + c] += val;
+        }
+    }
 }
-#endif
 
-int main( int argc, char *argv[] )
+template<class T>
+void fill_sin(T** data_out_void, bool planar, int channels, int samplerate, int samples_count,
+    int offset = 0, int frequency = 500, float amplitude = 0.5, bool mix = false,
+    int dst_offset = 0)
 {
-  unsigned int bufferFrames, fs, device = 0, offset = 0;
+    float y = 0;
+    for (int x = 0; x < samples_count; x++) {
+        y = generate_sin(x + offset, samplerate, frequency, amplitude);
+        write_float_to_data(data_out_void, planar, channels, y, x, mix, dst_offset);
+    }
+}
 
-  // minimal command-line checking
-  if (argc < 3 || argc > 6 ) usage();
+struct UserData {
+    int channels = 0;
+    int samplerate = 0;
+    bool interleaved = true;
+    int offset = 0;
+    int durationMs = 0;
+    float frequency = 0;
+};
 
-  // Specify our own error callback function.
-  RtAudio dac( RtAudio::UNSPECIFIED, &errorCallback );
+int produceAudio(void* outputBuffer, void* /*inputBuffer*/, unsigned int nBufferFrames,
+    double streamTime, RtAudioStreamStatus status, void* data) {
+    UserData* userData = (UserData*)data;
+    std::vector<MY_TYPE*> buffers;
+    if (userData->interleaved) {
+        buffers.resize(1);
+        buffers[0] = (MY_TYPE*)outputBuffer;
+    }
+    else {
+        buffers.resize(userData->channels);
+        for (int c = 0; c < userData->channels; c++) {
+            buffers[c] = ((MY_TYPE*)outputBuffer) + nBufferFrames * c;
+        }
+    }
+    fill_sin<MY_TYPE>(buffers.data(), !userData->interleaved, userData->channels, userData->samplerate, nBufferFrames, userData->offset, userData->frequency, 0.8f);
+    userData->offset += nBufferFrames;
+    if (((float)userData->offset * 1000 / userData->samplerate) > userData->durationMs) {
+        return 2;
+    }
+    return 0;
+}
 
-  std::vector<unsigned int> deviceIds = dac.getDeviceIds();
-  if ( deviceIds.size() < 1 ) {
-    std::cout << "\nNo audio devices found!\n";
-    exit( 1 );
-  }
+bool playsin(RtAudio& dac, unsigned int deviceId, int channels, unsigned int bufferFrames, unsigned int samplerate, bool interleaved, int durationMs) {
+    dac.showWarnings(true);
 
-  channels = (unsigned int) atoi( argv[1] );
-  fs = (unsigned int) atoi( argv[2] );
-  if ( argc > 3 )
-    device = (unsigned int) atoi( argv[3] );
-  if ( argc > 4 )
-    offset = (unsigned int) atoi( argv[4] );
-  if ( argc > 5 )
-    nFrames = (unsigned int) (fs * atof( argv[5] ));
-  if ( nFrames > 0 ) checkCount = true;
+    UserData userData;
+    userData.channels = channels;
+    userData.samplerate = samplerate;
+    userData.interleaved = interleaved;
+    userData.durationMs = durationMs;
+    userData.frequency = 400;
 
-  double *data = (double *) calloc( channels, sizeof( double ) );
+    RtAudio::StreamParameters oParams;
+    oParams.nChannels = channels;
+    oParams.firstChannel = 0;
+    oParams.deviceId = deviceId;
 
-  //dac.setErrorCallback( &errorCallback ); // could use if not set via constructor
+    RtAudio::StreamOptions options;
+    options.flags |= RTAUDIO_SCHEDULE_REALTIME;
 
-  // Tell RtAudio to output all messages, even warnings.
-  dac.showWarnings( true );
+    if (dac.openStream(&oParams, NULL, FORMAT, samplerate, &bufferFrames, &produceAudio, (void*)&userData, &options)) {
+        std::cout << dac.getErrorText() << std::endl;
+        return false;
+    }
+    if (dac.isStreamOpen() == false) return false;;
+    dac.startStream();
 
-  // Set our stream parameters for output only.
-  bufferFrames = 512;
-  RtAudio::StreamParameters oParams;
-  oParams.nChannels = channels;
-  oParams.firstChannel = offset;
+    std::cout << "\nPlaying ... (buffer size = " << bufferFrames << ").\n";
 
-  if ( device == 0 )
-    oParams.deviceId = dac.getDefaultOutputDevice();
-  else {
-    if ( device >= deviceIds.size() )
-      device = getDeviceIndex( dac.getDeviceNames() );
-    oParams.deviceId = deviceIds[device];
-  }
+    while (dac.isStreamRunning()) SLEEP(50);
+    if (dac.isStreamOpen()) dac.closeStream();
+    return true;
+}
 
-  options.flags = RTAUDIO_HOG_DEVICE;
-  options.flags |= RTAUDIO_SCHEDULE_REALTIME;
-#if !defined( USE_INTERLEAVED )
-  options.flags |= RTAUDIO_NONINTERLEAVED;
-#endif
+int main(int argc, char* argv[])
+{
+    unsigned int bufferFrames, fs, device = 0, offset = 0, durationMs = 1000, deviceId = 0, channels = 0;
 
-  // An error in the openStream() function can be detected either by
-  // checking for a non-zero return value OR by a subsequent call to
-  // isStreamOpen().
-  if ( dac.openStream( &oParams, NULL, FORMAT, fs, &bufferFrames, &saw, (void *)data, &options ) ) {
-    std::cout << dac.getErrorText() << std::endl;
-    goto cleanup;
-  }
-  if ( dac.isStreamOpen() == false ) goto cleanup;
+    // minimal command-line checking
+    if (argc < 4 || argc > 6) usage();
 
-  //std::cout << "Stream latency = " << dac.getStreamLatency() << "\n" << std::endl;
-  
-  // Stream is open ... now start it.
-  if ( dac.startStream() ) {
-    std::cout << dac.getErrorText() << std::endl;
-    goto cleanup;
-  }
+    auto api = RtAudio::getCompiledApiByName(argv[1]);
+    if (api == RtAudio::UNSPECIFIED) {
+        std::cout << "\nNo api found!\n";
+        return 1;
+    }
+    std::cout << "Using API: " << RtAudio::getApiDisplayName(api) << std::endl;
+    // Specify our own error callback function.
+    RtAudio dac(api, &errorCallback);
+    std::vector<unsigned int> deviceIds = dac.getDeviceIds();
+    if (deviceIds.empty()) {
+        std::cout << "\nNo audio devices found!\n";
+        exit(1);
+    }
 
-  if ( checkCount ) {
-    while ( dac.isStreamRunning() == true ) SLEEP( 100 );
-  }
-  else {
-    std::cout << "\nPlaying ... quit with Ctrl-C (buffer size = " << bufferFrames << ").\n";
+    channels = (unsigned int)atoi(argv[2]);
+    fs = (unsigned int)atoi(argv[3]);
+    if (argc > 4)
+        device = (unsigned int)atoi(argv[4]);
+    if (argc > 5)
+        durationMs = atoi(argv[5]);
 
-    // Install an interrupt handler function.
-    done = false;
-    (void) signal(SIGINT, finish);
+    deviceId = deviceIds[device];
+    if (device >= deviceIds.size()) {
+        std::cout << "Device out of range" << std::endl;
+        return 1;
+    }
+    auto devInfo = dac.getDeviceInfo(deviceId);
+    std::cout << "Name: " << devInfo.name << std::endl;
+    std::cout << "BusID: " << devInfo.busID << std::endl;
+    std::cout << "Input channels: " << devInfo.inputChannels << std::endl;
+    std::cout << "Output channels: " << devInfo.outputChannels << std::endl;
+    std::cout << "Native samplerate: " << devInfo.preferredSampleRate << std::endl;
+    std::cout << "Play samplerate: " << fs << std::endl;
 
-    while ( !done && dac.isStreamRunning() ) SLEEP( 100 );
+    bufferFrames = 1024;
 
-    // Block released ... stop the stream
-    if ( dac.isStreamRunning() )
-      dac.stopStream();  // or could call dac.abortStream();
-  }
+    if (playsin(dac, deviceId, channels, bufferFrames, fs, true, durationMs) == false) {
+        std::cout << "Failed to play stream" << std::endl;
+        return 1;
+    }
 
- cleanup:
-  if ( dac.isStreamOpen() ) dac.closeStream();
-  free( data );
-
-  return 0;
+    std::cout << "Finished" << std::endl;
+    return 0;
 }
