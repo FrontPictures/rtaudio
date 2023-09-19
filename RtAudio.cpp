@@ -89,7 +89,7 @@ const unsigned int RtApi::SAMPLE_RATES[] = {
 
 #if defined(__WINDOWS_WASAPI__)
 
-#include "RtAudioWasapi.h"
+#include "wasapi/RtAudioWasapi.h"
 
 #endif
 
