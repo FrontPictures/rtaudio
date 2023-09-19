@@ -20,11 +20,7 @@ endif()
 # Check for Pulse (any OS)
 pkg_check_modules(pulse libpulse-simple)
 
-# Check for known non-Linux unix-likes
-if (CMAKE_SYSTEM_NAME MATCHES "kNetBSD.*|NetBSD.*")
-  message(STATUS "NetBSD detected, using OSS")
-  set(xBSD ON)
-elseif(UNIX AND NOT APPLE)
+if(UNIX AND NOT APPLE)
   set(LINUX ON)
 endif()
 
@@ -56,7 +52,6 @@ set(RTAUDIO_TARGETNAME_UNINSTALL "uninstall" CACHE STRING "Name of 'uninstall' b
 option(RTAUDIO_API_DS "Build DirectSound API" OFF)
 option(RTAUDIO_API_ASIO "Build ASIO API" OFF)
 option(RTAUDIO_API_WASAPI "Build WASAPI API" ${WIN32})
-option(RTAUDIO_API_OSS "Build OSS4 API" ${xBSD})
 option(RTAUDIO_API_ALSA "Build ALSA API" ${LINUX})
 option(RTAUDIO_API_PULSE "Build PulseAudio API" ${pulse_FOUND})
 option(RTAUDIO_API_JACK "Build JACK audio server API" ${HAVE_JACK})
@@ -139,18 +134,6 @@ if (RTAUDIO_API_ALSA)
   list(APPEND API_DEFS "-D__LINUX_ALSA__")
   list(APPEND API_LIST "alsa")
   list(APPEND rtaudio_SOURCES "alsa/RtApiAlsa.cpp" "alsa/RtApiAlsa.h")
-endif()
-
-# OSS
-if (RTAUDIO_API_OSS)
-  set(NEED_PTHREAD ON)
-  find_library(OSSAUDIO_LIB ossaudio)
-  if (OSSAUDIO_LIB)
-    list(APPEND LINKLIBS ossaudio)
-    # Note: not an error on some systems
-  endif()
-  list(APPEND API_DEFS "-D__LINUX_OSS__")
-  list(APPEND API_LIST "oss")
 endif()
 
 # Pulse
