@@ -137,6 +137,7 @@ if (RTAUDIO_API_ALSA)
   list(APPEND PKGCONFIG_REQUIRES "alsa")
   list(APPEND API_DEFS "-D__LINUX_ALSA__")
   list(APPEND API_LIST "alsa")
+  list(APPEND rtaudio_SOURCES "alsa/RtApiAlsa.cpp" "alsa/RtApiAlsa.h")
 endif()
 
 # OSS
