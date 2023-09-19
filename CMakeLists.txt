@@ -183,6 +183,7 @@ if (RTAUDIO_API_ASIO)
     include/iasiothiscallresolver.cpp)
   list(APPEND API_DEFS "-D__WINDOWS_ASIO__")
   list(APPEND API_LIST "asio")
+  list(APPEND rtaudio_SOURCES "asio/RtApiAsio.cpp" "asio/RtApiAsio.h")
 endif()
 
 # DSound

@@ -1,3 +1,12 @@
+// Authored by Marcus Tomlinson <themarcustomlinson@gmail.com>, April 2014
+// Updates for new device selection scheme by Gary Scavone, January 2022
+// - Introduces support for the Windows WASAPI API
+// - Aims to deliver bit streams to and from hardware at the lowest possible latency, via the absolute minimum buffer sizes required
+// - Provides flexible stream configuration to an otherwise strict and inflexible WASAPI interface
+// - Includes automatic internal conversion of sample rate and buffer size between hardware and the user
+
+#pragma once
+
 #include "RtAudio.h"
 #include <mmdeviceapi.h>
 #include <mfapi.h>
