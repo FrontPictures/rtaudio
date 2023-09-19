@@ -161,6 +161,7 @@ if (RTAUDIO_API_PULSE)
   list(APPEND PKGCONFIG_REQUIRES "libpulse-simple")
   list(APPEND API_DEFS "-D__LINUX_PULSE__")
   list(APPEND API_LIST "pulse")
+  list(APPEND rtaudio_SOURCES "pulse/RtApiPulse.cpp" "pulse/RtApiPulse.h")
 endif()
 
 # CoreAudio
