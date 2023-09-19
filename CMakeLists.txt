@@ -123,6 +123,7 @@ if (RTAUDIO_API_JACK AND jack_FOUND)
   else()
     list(APPEND LINKLIBS ${JACK_LIB})
   endif()
+  list(APPEND rtaudio_SOURCES "jack/RtApiJack.cpp" "jack/RtApiJack.h")
 endif()
 
 # ALSA
