@@ -197,23 +197,28 @@ bool playsin(RtAudio& dac, unsigned int deviceId, int channels, unsigned int buf
     RtAudio::StreamOptions options;
     options.flags |= RTAUDIO_SCHEDULE_REALTIME;
 
-    if (dac.openStream(&oParams, NULL, FORMAT, samplerate, &bufferFrames, &produceAudio, (void*)&userData, &options)) {
-        std::cout << dac.getErrorText() << std::endl;
-        return false;
+    while (1) {
+        if (dac.openStream(&oParams, NULL, FORMAT, samplerate, &bufferFrames, &produceAudio, (void*)&userData, &options)) {
+            std::cout << dac.getErrorText() << std::endl;
+            SLEEP(1000);
+            continue;
+        }
+        if (dac.isStreamOpen() == false) return false;;
+
+        dac.startStream();
+
+        std::cout << "\nPlaying ... (buffer size = " << bufferFrames << ").\n";
+
+        while (dac.isStreamRunning()) SLEEP(50);
+        if (dac.isStreamOpen()) dac.closeStream();
     }
-    if (dac.isStreamOpen() == false) return false;;
-    dac.startStream();
 
-    std::cout << "\nPlaying ... (buffer size = " << bufferFrames << ").\n";
-
-    while (dac.isStreamRunning()) SLEEP(50);
-    if (dac.isStreamOpen()) dac.closeStream();
     return true;
 }
 
 int main(int argc, char* argv[])
 {
-    unsigned int bufferFrames, fs, device = 0, offset = 0, durationMs = 1000, deviceId = 0, channels = 0;
+    unsigned int bufferFrames, fs, device = 0, offset = 0, durationMs = 100000, deviceId = 0, channels = 0;
 
     // minimal command-line checking
     if (argc < 4 || argc > 6) usage();
@@ -245,6 +250,10 @@ int main(int argc, char* argv[])
         return 1;
     }
     auto devInfo = dac.getDeviceInfo(deviceId);
+
+    if (fs == 0) {
+        fs = devInfo.preferredSampleRate;
+    }
     std::cout << "Name: " << devInfo.name << std::endl;
     std::cout << "BusID: " << devInfo.busID << std::endl;
     std::cout << "Input channels: " << devInfo.inputChannels << std::endl;
