@@ -8,6 +8,7 @@ project(RtAudio LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Check for Jack (any OS)
 find_library(JACK_LIB jack)
@@ -96,7 +97,7 @@ file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/configure.ac" CONFIGAC
 string(REGEX REPLACE "${R}" "\\1" PACKAGE_VERSION "${CONFIGAC}")
 
 # Init variables
-set(rtaudio_SOURCES RtAudio.cpp RtAudio.h rtaudio_c.cpp rtaudio_c.h utils.cpp utils.h)
+set(rtaudio_SOURCES RtAudio.cpp RtAudio.h utils.cpp utils.h)
 set(LINKLIBS)
 set(PKGCONFIG_REQUIRES)
 set(LIBS_REQUIRES)

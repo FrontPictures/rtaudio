@@ -20,20 +20,18 @@
 #include "asiodrivers.h"
 #include "RtAudio.h"
 #include "iasiothiscallresolver.h"
+#include <mutex>
 
 // Function declarations (definitions at end of section)
 static const char* getAsioErrorString(ASIOError result);
-static void sampleRateChanged(ASIOSampleRate sRate);
+static void sampleRateChangedGlobal(ASIOSampleRate sRate);
 static long asioMessages(long selector, long value, void* message, double* opt);
 
 struct AsioHandle {
-    int drainCounter;       // Tracks callback counts when draining
-    bool internalDrain;     // Indicates if stop is initiated from callback or not.
     ASIOBufferInfo* bufferInfos;
-    HANDLE condition;
 
     AsioHandle()
-        :drainCounter(0), internalDrain(false), bufferInfos(0), condition(nullptr) {}
+        :bufferInfos(0) {}
 };
 
 class RtApiAsio : public RtApi
@@ -47,18 +45,22 @@ public:
     RtAudioErrorType stopStream(void) override;
     RtAudioErrorType abortStream(void) override;
 
+    RtAudioErrorType openAsioControlPanel(void) override;
+
     // This function is intended for internal use only.  It must be
     // public because it is called by the internal callback handler,
     // which is not a member of RtAudio.  External use of this function
     // will most likely produce highly undesirable results!
     bool callbackEvent(long bufferIndex);
+    long asioMessages(long selector, long value, void* message, double* opt);
+    void sampleRateChanged(ASIOSampleRate sRate);
 
 private:
 
-    bool coInitialized_;
-    void probeDevices(void) override;
+    bool coInitialized_;    
+    bool probeSingleDeviceInfo(RtAudio::DeviceInfo& info) override;
     void listDevices(void) override;
-    bool probeDeviceInfo(RtAudio::DeviceInfo& info);
+    void listAsioDevices();
     bool probeDeviceOpen(unsigned int device, StreamMode mode, unsigned int channels,
         unsigned int firstChannel, unsigned int sampleRate,
         RtAudioFormat format, unsigned int* bufferSize,

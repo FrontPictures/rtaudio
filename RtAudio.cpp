@@ -57,10 +57,10 @@
 #endif
 
 // Static variable definitions.
-const unsigned int RtApi::MAX_SAMPLE_RATES = 14;
+const unsigned int RtApi::MAX_SAMPLE_RATES = 16;
 const unsigned int RtApi::SAMPLE_RATES[] = {
   4000, 5512, 8000, 9600, 11025, 16000, 22050,
-  32000, 44100, 48000, 88200, 96000, 176400, 192000
+  32000, 44100, 48000, 64000, 88200, 96000, 128000, 176400, 192000
 };
 
 // *************************************************** //
@@ -292,21 +292,6 @@ RtAudio :: RtAudio( RtAudio::Api api, RtAudioErrorCallback&& errorCallback )
       std::cerr << '\n' << errorMessage << '\n' << std::endl;
   }
 
-  // Iterate through the compiled APIs and return as soon as we find
-  // one with at least one device or we reach the end of the list.
-  std::vector< RtAudio::Api > apis;
-  getCompiledApi( apis );
-  for ( unsigned int i=0; i<apis.size(); i++ ) {
-    openRtApi( apis[i] );
-    if ( rtapi_ && (rtapi_->getDeviceNames()).size() > 0 )
-      break;
-  }
-
-  if ( rtapi_ ) {
-    if ( errorCallback ) rtapi_->setErrorCallback( errorCallback );
-    return;
-  }
-
   // It should not be possible to get here because the preprocessor
   // definition __RTAUDIO_DUMMY__ is automatically defined in RtAudio.h
   // if no API-specific definitions are passed to the compiler. But just
@@ -392,9 +377,6 @@ RtAudioErrorType RtApi :: openStream( RtAudio::StreamParameters *oParams,
     errorText_ = "RtApi::openStream: 'format' parameter value is undefined.";
     return error( RTAUDIO_INVALID_PARAMETER );
   }
-
-  // Scan devices if none currently listed.
-  if ( deviceList_.size() == 0 ) probeDevices();
   
   unsigned int m, oChannels = 0;
   if ( oParams ) {
@@ -447,150 +429,24 @@ RtAudioErrorType RtApi :: openStream( RtAudio::StreamParameters *oParams,
   return RTAUDIO_NO_ERROR;
 }
 
-void RtApi :: probeDevices( void )
+std::vector<RtAudio::DeviceInfo> RtApi::getDeviceInfosNoProbe(void)
 {
-  // This function MUST be implemented in all subclasses! Within each
-  // API, this function will be used to:
-  // - enumerate the devices and fill or update our
-  //   std::vector< RtAudio::DeviceInfo> deviceList_ class variable
-  // - store corresponding (usually API-specific) identifiers that
-  //   are needed to open each device
-  // - make sure that the default devices are properly identified
-  //   within the deviceList_ (unless API-specific functions are
-  //   available for this purpose).
-  //
-  // The function should not reprobe devices that have already been
-  // found. The function must properly handle devices that are removed
-  // or added.
-  //
-  // Ideally, we would also configure callback functions to be invoked
-  // when devices are added or removed (which could be used to inform
-  // clients about changes). However, none of the APIs currently
-  // support notification of _new_ devices and I don't see the
-  // usefulness of having this work only for device removal.
-  return;
-}
-
-void RtApi :: listDevices( void )
-{    
-  probeDevices();
-}
-
-unsigned int RtApi :: getDeviceCount( void )
-{
-  probeDevices();
-  return (unsigned int)deviceList_.size();
-}
-
-std::vector<unsigned int> RtApi :: getDeviceIds( void )
-{
-  probeDevices();
-
-  // Copy device IDs into output vector.
-  std::vector<unsigned int> deviceIds;
-  for ( unsigned int m=0; m<deviceList_.size(); m++ )
-    deviceIds.push_back( deviceList_[m].ID );
-
-  return deviceIds;
-}
-
-std::vector<unsigned int> RtApi :: getDeviceIdsNoProbe(void)
-{
-  listDevices();
-  std::vector<unsigned int> deviceIds;
-  for (unsigned int m = 0; m < deviceList_.size(); m++)
-    deviceIds.push_back(deviceList_[m].ID);
-  return deviceIds;
-}
-
-std::vector<std::string> RtApi :: getDeviceNames( void )
-{
-  probeDevices();
-
-  // Copy device names into output vector.
-  std::vector<std::string> deviceNames;
-  for ( unsigned int m=0; m<deviceList_.size(); m++ )
-    deviceNames.push_back( deviceList_[m].name );
-
-  return deviceNames;
-}
-
-unsigned int RtApi :: getDefaultInputDevice( void )
-{
-  // Should be reimplemented in subclasses if necessary.
-  if ( deviceList_.size() == 0 ) probeDevices();
-  for ( unsigned int i = 0; i < deviceList_.size(); i++ ) {
-    if ( deviceList_[i].isDefaultInput )
-      return deviceList_[i].ID;
-  }
-
-  // If not found, find the first device with input channels, set it
-  // as the default, and return the ID.
-  for ( unsigned int i = 0; i < deviceList_.size(); i++ ) {
-    if ( deviceList_[i].inputChannels > 0 ) {
-      deviceList_[i].isDefaultInput = true;
-      return deviceList_[i].ID;
-    }
-  }
-
-  return 0;
-}
-
-unsigned int RtApi :: getDefaultOutputDevice( void )
-{
-  // Should be reimplemented in subclasses if necessary.
-  if ( deviceList_.size() == 0 ) probeDevices();
-  for ( unsigned int i = 0; i < deviceList_.size(); i++ ) {
-    if ( deviceList_[i].isDefaultOutput )
-      return deviceList_[i].ID;
-  }
-
-  // If not found, find the first device with output channels, set it
-  // as the default, and return the ID.
-  for ( unsigned int i = 0; i < deviceList_.size(); i++ ) {
-    if ( deviceList_[i].outputChannels > 0 ) {
-      deviceList_[i].isDefaultOutput = true;
-      return deviceList_[i].ID;
-    }
-  }
-
-  return 0;
-}
-
-RtAudio::DeviceInfo RtApi :: getDeviceInfo( unsigned int deviceId )
-{
-  probeDevices();
-  for ( unsigned int m=0; m<deviceList_.size(); m++ ) {
-    if ( deviceList_[m].ID == deviceId )
-      return deviceList_[m];
-  }
-
-  errorText_ = "RtApi::getDeviceInfo: deviceId argument not found.";
-  error( RTAUDIO_INVALID_PARAMETER );
-  return RtAudio::DeviceInfo();
-}
-
-RtAudio::DeviceInfo RtApi :: getDeviceInfoNoProbe( unsigned int deviceId )
-{
-  for (unsigned int m = 0; m < deviceList_.size(); m++) {
-    if (deviceList_[m].ID == deviceId)
-      return deviceList_[m];
-  }
-
-  errorText_ = "RtApi::getDeviceInfo: deviceId argument not found.";
-  error(RTAUDIO_INVALID_PARAMETER);
-  return RtAudio::DeviceInfo();
+    listDevices();
+    return deviceList_;
 }
 
 RtAudio::DeviceInfo RtApi::getDeviceInfoByBusID(std::string busID)
-{
-    if (deviceList_.size() == 0) probeDevices();
+{    
     for (unsigned int m = 0; m < deviceList_.size(); m++) {
-        if (deviceList_[m].busID== busID)
+        if (deviceList_[m].busID == busID) {
+            if (probeSingleDeviceInfo(deviceList_[m])==false) {
+                break;
+            }
             return deviceList_[m];
+        }            
     }
 
-    errorText_ = "RtApi::getDeviceInfo: deviceId argument not found.";
+    errorText_ = "RtApi::getDeviceInfo: probe error.";
     error(RTAUDIO_INVALID_PARAMETER);
     return RtAudio::DeviceInfo();
 }
@@ -632,6 +488,10 @@ RtAudioErrorType RtApi::registerExtraCallback(RtAudioDeviceCallback callback, vo
 
 RtAudioErrorType RtApi::unregisterExtraCallback()
 {
+    return RTAUDIO_UNKNOWN_ERROR;
+}
+
+RtAudioErrorType RtApi::openAsioControlPanel(void) {
     return RTAUDIO_UNKNOWN_ERROR;
 }
 

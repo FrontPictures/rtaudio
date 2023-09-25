@@ -6,103 +6,44 @@ static ASIODriverInfo driverInfo;
 static CallbackInfo* asioCallbackInfo;
 
 static bool asioXRun;
-static bool streamOpen = false; // Tracks whether any instance of RtAudio has a stream open
 
-// This function will be called by a spawned thread when: 1. The user
-// callback function signals that the stream should be stopped or
-// aborted; or 2. When a signal is received indicating that the device
-// sample rate has changed or it has been disconnected.  It is
-// necessary to handle it this way because the callbackEvent() or
-// signaling function must return before the ASIOStop() function will
-// return (or the driver can be removed).
-static unsigned __stdcall asioStopStream(void* ptr)
-{
-    CallbackInfo* info = (CallbackInfo*)ptr;
-    RtApiAsio* object = (RtApiAsio*)info->object;
-
-    if (info->deviceDisconnected == false)
-        object->stopStream(); // drain the stream
-    else
-        object->closeStream(); // disconnect or sample rate change ... close the stream
-
-    _endthreadex(0);
-    return 0;
+namespace {
+    template<class T>
+    bool vector_contains(const std::vector<T>& vec, const T& val) {
+        for (auto& e : vec) {
+            if (e == val)
+                return true;
+        }
+        return false;
+    }
 }
 
-static long asioMessages(long selector, long value, void* /*message*/, double* /*opt*/)
-{
-    long ret = 0;
-
-    switch (selector) {
-    case kAsioSelectorSupported:
-        if (value == kAsioResetRequest
-            || value == kAsioEngineVersion
-            || value == kAsioResyncRequest
-            || value == kAsioLatenciesChanged
-            // The following three were added for ASIO 2.0, you don't
-            // necessarily have to support them.
-            || value == kAsioSupportsTimeInfo
-            || value == kAsioSupportsTimeCode
-            || value == kAsioSupportsInputMonitor)
-            ret = 1L;
-        break;
-    case kAsioResetRequest:
-        // This message is received when a device is disconnected (and
-        // perhaps when the sample rate changes). It indicates that the
-        // driver should be reset, which is accomplished by calling
-        // ASIOStop(), ASIODisposeBuffers() and removing the driver. But
-        // since this message comes from the driver, we need to let this
-        // function return before attempting to close the stream and
-        // remove the driver. Thus, we invoke a thread to initiate the
-        // stream closing.
-        asioCallbackInfo->deviceDisconnected = true; // flag for either rate change or disconnect
-        unsigned threadId;
-        asioCallbackInfo->thread = _beginthreadex(NULL, 0, &asioStopStream,
-            asioCallbackInfo, 0, &threadId);
-        //std::cerr << "\nRtApiAsio: driver reset requested!!!" << std::endl;
-        ret = 1L;
-        break;
-    case kAsioResyncRequest:
-        // This informs the application that the driver encountered some
-        // non-fatal data loss.  It is used for synchronization purposes
-        // of different media.  Added mainly to work around the Win16Mutex
-        // problems in Windows 95/98 with the Windows Multimedia system,
-        // which could lose data because the Mutex was held too long by
-        // another thread.  However a driver can issue it in other
-        // situations, too.
-        // std::cerr << "\nRtApiAsio: driver resync requested!!!" << std::endl;
-        asioXRun = true;
-        ret = 1L;
-        break;
-    case kAsioLatenciesChanged:
-        // This will inform the host application that the drivers were
-        // latencies changed.  Beware, it this does not mean that the
-        // buffer sizes have changed!  You might need to update internal
-        // delay data.
-        std::cerr << "\nRtApiAsio: driver latency may have changed!!!" << std::endl;
-        ret = 1L;
-        break;
-    case kAsioEngineVersion:
-        // Return the supported ASIO version of the host application.  If
-        // a host application does not implement this selector, ASIO 1.0
-        // is assumed by the driver.
-        ret = 2L;
-        break;
-    case kAsioSupportsTimeInfo:
-        // Informs the driver whether the
-        // asioCallbacks.bufferSwitchTimeInfo() callback is supported.
-        // For compatibility with ASIO 1.0 drivers the host application
-        // should always support the "old" bufferSwitch method, too.
-        ret = 0;
-        break;
-    case kAsioSupportsTimeCode:
-        // Informs the driver whether application is interested in time
-        // code info.  If an application does not need to know about time
-        // code, the driver has less work to do.
-        ret = 0;
-        break;
+inline static std::string IntToHex(uint64_t v) {
+    char buf[17]{ 0 };
+    _ui64toa(v, buf, 16);
+    if (strlen(buf) % 2 == 0) {
+        return buf;
     }
-    return ret;
+    return std::string("0") + buf;
+}
+
+inline static std::string CLSIDToHex(CLSID id) {
+    std::string res;
+    res += IntToHex(id.Data1);
+    res += IntToHex(id.Data2);
+    res += IntToHex(id.Data3);
+    for (int e = 0; e < 8; e++) {
+        res += IntToHex(id.Data4[e]);
+    }
+    return res;
+}
+
+static long asioMessagesGlobal(long selector, long value, void* /*message*/, double* /*opt*/)
+{
+    RtApiAsio* object = (RtApiAsio*)asioCallbackInfo->object;
+    if (object)
+        return object->asioMessages(selector, value, nullptr, nullptr);
+    return 0;
 }
 
 static const char* getAsioErrorString(ASIOError result)
@@ -130,21 +71,10 @@ static const char* getAsioErrorString(ASIOError result)
     return "Unknown error.";
 }
 
-static void sampleRateChanged(ASIOSampleRate sRate)
+static void sampleRateChangedGlobal(ASIOSampleRate sRate)
 {
-    // The ASIO documentation says that this usually only happens during
-    // external sync.  Audio processing is not stopped by the driver,
-    // actual sample rate might not have even changed, maybe only the
-    // sample rate status of an AES/EBU or S/PDIF digital input at the
-    // audio device.
-
-    RtApi* object = (RtApi*)asioCallbackInfo->object;
-    if (object->getStreamSampleRate() != sRate) {
-        asioCallbackInfo->deviceDisconnected = true; // flag for either rate change or disconnect
-        unsigned threadId;
-        asioCallbackInfo->thread = _beginthreadex(NULL, 0, &asioStopStream,
-            asioCallbackInfo, 0, &threadId);
-    }
+    RtApiAsio* object = (RtApiAsio*)asioCallbackInfo->object;
+    object->sampleRateChanged(sRate);
 }
 
 RtApiAsio::RtApiAsio()
@@ -159,102 +89,55 @@ RtApiAsio::RtApiAsio()
         error(RTAUDIO_WARNING);
     }
     coInitialized_ = true;
-
-    // Check whether another RtAudio instance has an ASIO stream open.
-    if (streamOpen) {
-        errorText_ = "RtApiAsio(): Another RtAudio ASIO stream is open, functionality may be limited.";
-        error(RTAUDIO_WARNING);
-    }
-    else
-        drivers.removeCurrentDriver();
-
+    drivers.removeCurrentDriver();
     driverInfo.asioVersion = 2;
-
-    // See note in DirectSound implementation about GetDesktopWindow().
-    driverInfo.sysRef = GetForegroundWindow();
+    driverInfo.sysRef = nullptr;
+    listAsioDevices();
 }
 
-RtApiAsio :: ~RtApiAsio()
+RtApiAsio::~RtApiAsio()
 {
-    if (stream_.state != STREAM_CLOSED) closeStream();
+    closeStream();
     if (coInitialized_) CoUninitialize();
 }
 
-void RtApiAsio::probeDevices(void)
+void RtApiAsio::listDevices(void) {}
+
+void RtApiAsio::listAsioDevices()
 {
-    // See list of required functionality in RtApi::probeDevices().
-    listDevices();
-
-    for (auto& d : deviceList_) {
-        if (probeDeviceInfo(d) == false) continue; // ignore if probe fails
-    }
-}
-
-void RtApiAsio::listDevices(void)
-{
-    // See list of required functionality in RtApi::probeDevices().
-
-    if (streamOpen) {
-        errorText_ = "RtApiAsio::probeDevices: Another RtAudio ASIO stream is open, cannot probe devices.";
-        error(RTAUDIO_WARNING);
-        return;
-    }
-
     unsigned int nDevices = drivers.asioGetNumDev();
     if (nDevices == 0) {
         deviceList_.clear();
         return;
     }
-
-    char tmp[32];
-    std::vector< std::string > driverNames;
-    unsigned int n, m;
+    char tmp[64]{};
+    CLSID driver_clsid{};
+    unsigned int n = 0;
     for (n = 0; n < nDevices; n++) {
-        ASIOError result = drivers.asioGetDriverName((int)n, tmp, 32);
+        ASIOError result = drivers.asioGetDriverName((int)n, tmp, 64);
         if (result != ASE_OK) {
             errorStream_ << "RtApiAsio::probeDevices: unable to get driver name (" << getAsioErrorString(result) << ").";
             errorText_ = errorStream_.str();
             error(RTAUDIO_WARNING);
             continue;
         }
-        driverNames.push_back(tmp);
-        for (m = 0; m < deviceList_.size(); m++) {
-            if (deviceList_[m].name == driverNames.back())
-                break; // We already have this device.
+        result = drivers.asioGetDriverCLSID((int)n, &driver_clsid);
+        if (result != ASE_OK) {
+            errorStream_ << "RtApiAsio::probeDevices: unable to get driver class id (" << getAsioErrorString(result) << ").";
+            errorText_ = errorStream_.str();
+            error(RTAUDIO_WARNING);
+            continue;
         }
-        if (m == deviceList_.size()) { // new device
-            RtAudio::DeviceInfo info;
-            info.name = driverNames.back();
-            info.ID = currentDeviceId_++;  // arbitrary internal device ID
-            info.busID = driverNames.back();
-            deviceList_.push_back(info);
-        }
-    }
 
-    // Remove any devices left in the list that are no longer available.
-    for (std::vector<RtAudio::DeviceInfo>::iterator it = deviceList_.begin(); it != deviceList_.end(); ) {
-        for (m = 0; m < driverNames.size(); m++) {
-            if ((*it).name == driverNames[m]) {
-                ++it;
-                break;
-            }
-        }
-        if (m == driverNames.size()) // not found so remove it from our list
-            it = deviceList_.erase(it);
-    }
-
-    // Asio doesn't provide default devices so call the getDefault
-    // functions, which will set the first available input and output
-    // devices as the defaults. Don't call getDefaultXXXDevice if
-    // deviceList is empty.
-    if (deviceList_.size() > 0)
-    {
-        getDefaultInputDevice();
-        getDefaultOutputDevice();
+        RtAudio::DeviceInfo info;
+        info.name = tmp;
+        info.ID = currentDeviceId_++;  // arbitrary internal device ID
+        info.busID = CLSIDToHex(driver_clsid);
+        deviceList_.push_back(info);
     }
 }
 
-bool RtApiAsio::probeDeviceInfo(RtAudio::DeviceInfo& info)
+bool RtApiAsio::probeSingleDeviceInfo(RtAudio::DeviceInfo& info)
 {
     if (!drivers.loadDriver(const_cast<char*>(info.name.c_str()))) {
         errorStream_ << "RtApiAsio::probeDeviceInfo: unable to load driver (" << info.name << ").";
@@ -291,14 +174,31 @@ bool RtApiAsio::probeDeviceInfo(RtAudio::DeviceInfo& info)
 
     // Determine the supported sample rates.
     info.sampleRates.clear();
+    ASIOSampleRate currentRate = 0;
+    result = ASIOGetSampleRate(&currentRate);
+    if (result != ASE_OK && result != ASE_NoClock) {
+        ASIOExit();
+        drivers.removeCurrentDriver();
+        errorStream_ << "RtApiAsio::probeDeviceInfo: error (" << getAsioErrorString(result) << ") get samplerate (" << info.name << ").";
+        errorText_ = errorStream_.str();
+        error(RTAUDIO_WARNING);
+        return false;
+    }
+    info.preferredSampleRate = currentRate;
+    bool preferredSampleRateFound = info.preferredSampleRate ? true : false;
+
     for (unsigned int i = 0; i < MAX_SAMPLE_RATES; i++) {
         result = ASIOCanSampleRate((ASIOSampleRate)SAMPLE_RATES[i]);
         if (result == ASE_OK) {
             info.sampleRates.push_back(SAMPLE_RATES[i]);
-
-            if (!info.preferredSampleRate || (SAMPLE_RATES[i] <= 48000 && SAMPLE_RATES[i] > info.preferredSampleRate))
-                info.preferredSampleRate = SAMPLE_RATES[i];
+            if (!preferredSampleRateFound) {
+                if (!info.preferredSampleRate || (SAMPLE_RATES[i] <= 48000 && SAMPLE_RATES[i] > info.preferredSampleRate))
+                    info.preferredSampleRate = SAMPLE_RATES[i];
+            }
         }
+    }
+    if (vector_contains(info.sampleRates, info.preferredSampleRate) == false) {
+        info.sampleRates.push_back(info.preferredSampleRate);
     }
 
     // Determine supported data types ... just check first channel and assume rest are the same.
@@ -368,10 +268,6 @@ bool RtApiAsio::probeDeviceOpen(unsigned int deviceId, StreamMode mode, unsigned
     // Only load the driver once for duplex stream.
     ASIOError result;
     if (!isDuplexInput) {
-        if (streamOpen) {
-            errorText_ = "RtApiAsio::probeDeviceOpen: Another RtAudio ASIO stream is open, cannot open more than one at a time.";
-            return FAILURE;
-        }
         if (!drivers.loadDriver(const_cast<char*>(driverName.c_str()))) {
             errorStream_ << "RtApiAsio::probeDeviceOpen: unable to load driver (" << driverName << ").";
             errorText_ = errorStream_.str();
@@ -564,12 +460,6 @@ bool RtApiAsio::probeDeviceOpen(unsigned int deviceId, StreamMode mode, unsigned
             goto error;
         }
         handle->bufferInfos = 0;
-
-        // Create a manual-reset event.
-        handle->condition = CreateEvent(NULL,   // no security
-            TRUE,   // manual-reset
-            FALSE,  // non-signaled initially
-            NULL); // unnamed
         stream_.apiHandle = (void*)handle;
     }
 
@@ -615,8 +505,8 @@ bool RtApiAsio::probeDeviceOpen(unsigned int deviceId, StreamMode mode, unsigned
 
     // Set up the ASIO callback structure and create the ASIO data buffers.
     asioCallbacks.bufferSwitch = &bufferSwitch;
-    asioCallbacks.sampleRateDidChange = &sampleRateChanged;
-    asioCallbacks.asioMessage = &asioMessages;
+    asioCallbacks.sampleRateDidChange = &sampleRateChangedGlobal;
+    asioCallbacks.asioMessage = &asioMessagesGlobal;
     asioCallbacks.bufferSwitchTimeInfo = NULL;
     result = ASIOCreateBuffers(handle->bufferInfos, nChannels, stream_.bufferSize, &asioCallbacks);
     if (result != ASE_OK) {
@@ -691,7 +581,6 @@ bool RtApiAsio::probeDeviceOpen(unsigned int deviceId, StreamMode mode, unsigned
     // here.
     if (stream_.doConvertBuffer[mode]) setConvertInfo(mode, 0);
 
-    streamOpen = true;
     return SUCCESS;
 
 error:
@@ -706,7 +595,6 @@ error:
         drivers.removeCurrentDriver();
 
         if (handle) {
-            CloseHandle(handle->condition);
             if (handle->bufferInfos)
                 free(handle->bufferInfos);
 
@@ -738,11 +626,9 @@ void RtApiAsio::closeStream()
     }
 
     if (stream_.state == STREAM_RUNNING) {
-        stream_.state = STREAM_STOPPED;
-        ASIOStop();
+        ASIOStop();//TODO: do we need stop when reset request received?
     }
 
-    stream_.state = STREAM_CLOSED;
     CallbackInfo* info = (CallbackInfo*)&stream_.callbackInfo;
     if (info->deviceDisconnected) {
         // This could be either a disconnect or a sample rate change.
@@ -756,7 +642,6 @@ void RtApiAsio::closeStream()
 
     AsioHandle* handle = (AsioHandle*)stream_.apiHandle;
     if (handle) {
-        CloseHandle(handle->condition);
         if (handle->bufferInfos)
             free(handle->bufferInfos);
         delete handle;
@@ -776,7 +661,7 @@ void RtApiAsio::closeStream()
     }
 
     clearStreamInfo();
-    streamOpen = false;
+    stream_.state = STREAM_CLOSED;;
     //stream_.mode = UNINITIALIZED;
     //stream_.state = STREAM_CLOSED;
 }
@@ -791,25 +676,14 @@ RtAudioErrorType RtApiAsio::startStream()
         return error(RTAUDIO_WARNING);
     }
 
-    /*
-    #if defined( HAVE_GETTIMEOFDAY )
-    gettimeofday( &stream_.lastTickTimestamp, NULL );
-    #endif
-    */
-
-    AsioHandle* handle = (AsioHandle*)stream_.apiHandle;
     ASIOError result = ASIOStart();
     if (result != ASE_OK) {
         errorStream_ << "RtApiAsio::startStream: error (" << getAsioErrorString(result) << ") starting device.";
         errorText_ = errorStream_.str();
         goto unlock;
     }
-
-    handle->drainCounter = 0;
-    handle->internalDrain = false;
-    ResetEvent(handle->condition);
-    stream_.state = STREAM_RUNNING;
     asioXRun = false;
+    stream_.state = STREAM_RUNNING;
 
 unlock:
     if (result == ASE_OK) return RTAUDIO_NO_ERROR;
@@ -825,23 +699,12 @@ RtAudioErrorType RtApiAsio::stopStream()
             errorText_ = "RtApiAsio::stopStream(): the stream is closed!";
         return error(RTAUDIO_WARNING);
     }
-
-    AsioHandle* handle = (AsioHandle*)stream_.apiHandle;
-    if (stream_.mode == OUTPUT || stream_.mode == DUPLEX) {
-        if (handle->drainCounter == 0) {
-            handle->drainCounter = 2;
-            WaitForSingleObject(handle->condition, INFINITE);  // block until signaled
-        }
-    }
-
-    stream_.state = STREAM_STOPPED;
-
     ASIOError result = ASIOStop();
     if (result != ASE_OK) {
         errorStream_ << "RtApiAsio::stopStream: error (" << getAsioErrorString(result) << ") stopping device.";
         errorText_ = errorStream_.str();
     }
-
+    stream_.state = STREAM_STOPPED;
     if (result == ASE_OK) return RTAUDIO_NO_ERROR;
     return error(RTAUDIO_SYSTEM_ERROR);
 }
@@ -855,7 +718,6 @@ RtAudioErrorType RtApiAsio::abortStream()
             errorText_ = "RtApiAsio::abortStream(): the stream is stopping or closed!";
         return error(RTAUDIO_WARNING);
     }
-
     // The following lines were commented-out because some behavior was
     // noted where the device buffers need to be zeroed to avoid
     // continuing sound, even when the device buffers are completely
@@ -866,11 +728,19 @@ RtAudioErrorType RtApiAsio::abortStream()
     return RTAUDIO_NO_ERROR;
 }
 
+RtAudioErrorType RtApiAsio::openAsioControlPanel(void)
+{
+    if (stream_.state == STREAM_CLOSED) {
+        errorText_ = "RtApiAsio::openAsioControlPanel(): the stream is closed!";
+        return error(RTAUDIO_WARNING);
+    }
+    ASIOControlPanel();
+}
+
 bool RtApiAsio::callbackEvent(long bufferIndex)
 {
-    if (stream_.state == STREAM_STOPPED || stream_.state == STREAM_STOPPING) return SUCCESS;
-    if (stream_.state == STREAM_CLOSED) {
-        errorText_ = "RtApiAsio::callbackEvent(): the stream is closed ... this shouldn't happen!";
+    if (stream_.state != STREAM_RUNNING) {
+        errorText_ = "RtApiAsio::callbackEvent(): the stream is not running ... this shouldn't happen!";
         error(RTAUDIO_WARNING);
         return FAILURE;
     }
@@ -878,48 +748,22 @@ bool RtApiAsio::callbackEvent(long bufferIndex)
     CallbackInfo* info = (CallbackInfo*)&stream_.callbackInfo;
     AsioHandle* handle = (AsioHandle*)stream_.apiHandle;
 
-    // Check if we were draining the stream and signal if finished.
-    if (handle->drainCounter > 3) {
-
-        stream_.state = STREAM_STOPPING;
-        if (handle->internalDrain == false)
-            SetEvent(handle->condition);
-        else { // spawn a thread to stop the stream
-            unsigned threadId;
-            stream_.callbackInfo.thread = _beginthreadex(NULL, 0, &asioStopStream,
-                &stream_.callbackInfo, 0, &threadId);
-        }
-        return SUCCESS;
+    RtAudioCallback callback = (RtAudioCallback)info->callback;
+    double streamTime = getStreamTime();
+    RtAudioStreamStatus status = 0;
+    if (stream_.mode != INPUT && asioXRun == true) {
+        status |= RTAUDIO_OUTPUT_UNDERFLOW;
+        asioXRun = false;
     }
-
-    // Invoke user callback to get fresh output data UNLESS we are
-    // draining stream.
-    if (handle->drainCounter == 0) {
-        RtAudioCallback callback = (RtAudioCallback)info->callback;
-        double streamTime = getStreamTime();
-        RtAudioStreamStatus status = 0;
-        if (stream_.mode != INPUT && asioXRun == true) {
-            status |= RTAUDIO_OUTPUT_UNDERFLOW;
-            asioXRun = false;
-        }
-        if (stream_.mode != OUTPUT && asioXRun == true) {
-            status |= RTAUDIO_INPUT_OVERFLOW;
-            asioXRun = false;
-        }
-        int cbReturnValue = callback(stream_.userBuffer[0], stream_.userBuffer[1],
-            stream_.bufferSize, streamTime, status, info->userData);
-        if (cbReturnValue == 2) {
-            stream_.state = STREAM_STOPPING;
-            handle->drainCounter = 2;
-            unsigned threadId;
-            stream_.callbackInfo.thread = _beginthreadex(NULL, 0, &asioStopStream,
-                &stream_.callbackInfo, 0, &threadId);
-            return SUCCESS;
-        }
-        else if (cbReturnValue == 1) {
-            handle->drainCounter = 1;
-            handle->internalDrain = true;
-        }
+    if (stream_.mode != OUTPUT && asioXRun == true) {
+        status |= RTAUDIO_INPUT_OVERFLOW;
+        asioXRun = false;
+    }
+    int cbReturnValue = callback(stream_.userBuffer[0], stream_.userBuffer[1],
+        stream_.bufferSize, streamTime, status, info->userData);
+    if (cbReturnValue == 2 || cbReturnValue == 1) {
+        stopStream();
+        return SUCCESS;
     }
 
     unsigned int nChannels, bufferBytes, i, j;
@@ -928,15 +772,7 @@ bool RtApiAsio::callbackEvent(long bufferIndex)
 
         bufferBytes = stream_.bufferSize * formatBytes(stream_.deviceFormat[0]);
 
-        if (handle->drainCounter > 1) { // write zeros to the output stream
-
-            for (i = 0, j = 0; i < nChannels; i++) {
-                if (handle->bufferInfos[i].isInput != ASIOTrue)
-                    memset(handle->bufferInfos[i].buffers[bufferIndex], 0, bufferBytes);
-            }
-
-        }
-        else if (stream_.doConvertBuffer[0]) {
+        if (stream_.doConvertBuffer[0]) {
 
             convertBuffer(stream_.deviceBuffer, stream_.userBuffer[0], stream_.convertInfo[0]);
             if (stream_.doByteSwap[0])
@@ -965,12 +801,6 @@ bool RtApiAsio::callbackEvent(long bufferIndex)
             }
 
         }
-    }
-
-    // Don't bother draining input
-    if (handle->drainCounter) {
-        handle->drainCounter++;
-        goto unlock;
     }
 
     if (stream_.mode == INPUT || stream_.mode == DUPLEX) {
@@ -1018,4 +848,90 @@ unlock:
 
     RtApi::tickStreamTime();
     return SUCCESS;
+}
+
+long RtApiAsio::asioMessages(long selector, long value, void* message, double* opt)
+{
+    long ret = 0;
+    switch (selector) {
+    case kAsioSelectorSupported:
+        if (value == kAsioResetRequest
+            || value == kAsioEngineVersion
+            || value == kAsioResyncRequest
+            || value == kAsioLatenciesChanged
+            // The following three were added for ASIO 2.0, you don't
+            // necessarily have to support them.
+            || value == kAsioSupportsTimeInfo
+            || value == kAsioSupportsTimeCode
+            || value == kAsioSupportsInputMonitor)
+            ret = 1L;
+        break;
+    case kAsioResetRequest:
+        // This message is received when a device is disconnected (and
+        // perhaps when the sample rate changes). It indicates that the
+        // driver should be reset, which is accomplished by calling
+        // ASIOStop(), ASIODisposeBuffers() and removing the driver. But
+        // since this message comes from the driver, we need to let this
+        // function return before attempting to close the stream and
+        // remove the driver. Thus, we invoke a thread to initiate the
+        // stream closing.        
+        // std::cerr << "\nRtApiAsio: driver reset requested!!!" << std::endl;
+        asioCallbackInfo->deviceDisconnected = true; // flag for either rate change or disconnect
+        stream_.state = STREAM_ERROR;
+        ret = 1L;
+        break;
+    case kAsioResyncRequest:
+        // This informs the application that the driver encountered some
+        // non-fatal data loss.  It is used for synchronization purposes
+        // of different media.  Added mainly to work around the Win16Mutex
+        // problems in Windows 95/98 with the Windows Multimedia system,
+        // which could lose data because the Mutex was held too long by
+        // another thread.  However a driver can issue it in other
+        // situations, too.
+        // std::cerr << "\nRtApiAsio: driver resync requested!!!" << std::endl;
+        asioXRun = true;
+        ret = 1L;
+        break;
+    case kAsioLatenciesChanged:
+        // This will inform the host application that the drivers were
+        // latencies changed.  Beware, it this does not mean that the
+        // buffer sizes have changed!  You might need to update internal
+        // delay data.
+        // std::cerr << "\nRtApiAsio: driver latency may have changed!!!" << std::endl;
+        ret = 1L;
+        break;
+    case kAsioEngineVersion:
+        // Return the supported ASIO version of the host application.  If
+        // a host application does not implement this selector, ASIO 1.0
+        // is assumed by the driver.
+        ret = 2L;
+        break;
+    case kAsioSupportsTimeInfo:
+        // Informs the driver whether the
+        // asioCallbacks.bufferSwitchTimeInfo() callback is supported.
+        // For compatibility with ASIO 1.0 drivers the host application
+        // should always support the "old" bufferSwitch method, too.
+        ret = 0;
+        break;
+    case kAsioSupportsTimeCode:
+        // Informs the driver whether application is interested in time
+        // code info.  If an application does not need to know about time
+        // code, the driver has less work to do.
+        ret = 0;
+        break;
+    }
+    return ret;
+}
+
+void RtApiAsio::sampleRateChanged(ASIOSampleRate sRate)
+{
+    // The ASIO documentation says that this usually only happens during
+    // external sync.  Audio processing is not stopped by the driver,
+    // actual sample rate might not have even changed, maybe only the
+    // sample rate status of an AES/EBU or S/PDIF digital input at the
+    // audio device.    
+    if (getStreamSampleRate() != sRate) {
+        asioCallbackInfo->deviceDisconnected = true; // flag for either rate change or disconnect
+        stream_.state = STREAM_ERROR;
+    }
 }

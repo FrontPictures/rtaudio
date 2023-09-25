@@ -113,12 +113,12 @@ long AsioDrivers::getDriverNames(char **names, long maxDrivers)
 
 bool AsioDrivers::loadDriver(char *name)
 {
-	char dname[64];
-	char curName[64];
+	char dname[65];
+	char curName[65];
 
 	for(long i = 0; i < asioGetNumDev(); i++)
 	{
-		if(!asioGetDriverName(i, dname, 32) && !strcmp(name, dname))
+		if(!asioGetDriverName(i, dname, 64) && !strcmp(name, dname))
 		{
 			curName[0] = 0;
 			getCurrentDriverName(curName);	// in case we fail...

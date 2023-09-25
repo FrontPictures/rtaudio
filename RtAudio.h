@@ -451,58 +451,7 @@ class RTAUDIO_DLL_PUBLIC RtAudio
   //! Returns the audio API specifier for the current instance of RtAudio.
   RtAudio::Api getCurrentApi( void );
 
-  //! A public function that queries for the number of audio devices available.
-  /*!
-    This function performs a system query of available devices each
-    time it is called, thus supporting devices (dis)connected \e after
-    instantiation. If a system error occurs during processing, a
-    warning will be issued.
-  */
-  unsigned int getDeviceCount( void );
-
-  //! A public function that returns a vector of audio device IDs.
-  /*!
-    The ID values returned by this function are used internally by
-    RtAudio to identify a given device. The values themselves are
-    arbitrary and do not correspond to device IDs used by the
-    underlying API (nor are they index values). This function performs
-    a system query of available devices each time it is called, thus
-    supporting devices (dis)connected \e after instantiation. If no
-    devices are available, the vector size will be zero. If a system
-    error occurs during processing, a warning will be issued.
-  */
-  std::vector<unsigned int> getDeviceIds( void );
-
-  //! A public function that returns a vector of audio device IDs
-  //! without probing information.  
-  std::vector<unsigned int> getDeviceIdsNoProbe( void );
-
-  //! A public function that returns a vector of audio device names.
-  /*!
-    This function performs a system query of available devices each
-    time it is called, thus supporting devices (dis)connected \e after
-    instantiation. If no devices are available, the vector size will
-    be zero. If a system error occurs during processing, a warning
-    will be issued.
-  */
-  std::vector<std::string> getDeviceNames( void );
-
-  //! Return an RtAudio::DeviceInfo structure for a specified device ID.
-  /*!
-    Any device ID returned by getDeviceIds() is valid, unless it has
-    been removed between the call to getDevceIds() and this
-    function. If an invalid argument is provided, an
-    RTAUDIO_INVALID_USE will be passed to the user-provided
-    errorCallback function (or otherwise printed to stderr) and all
-    members of the returned RtAudio::DeviceInfo structure will be
-    initialized to default, invalid values (ID = 0, empty name, ...).
-    If the specified device is the current default input or output
-    device, the corresponding "isDefault" member will have a value of
-    "true".
-  */
-  RtAudio::DeviceInfo getDeviceInfo( unsigned int deviceId );
-
-  RtAudio::DeviceInfo getDeviceInfoNoProbe( unsigned int deviceId );
+  std::vector<RtAudio::DeviceInfo> getDeviceInfosNoProbe( void );
 
   //! Return an RtAudio::DeviceInfo structure for a specified device bus ID.
   RtAudio::DeviceInfo getDeviceInfoByBusID(std::string busID);
@@ -661,6 +610,8 @@ class RTAUDIO_DLL_PUBLIC RtAudio
   */
   void showWarnings( bool value = true );
 
+  RtAudioErrorType openAsioControlPanel( void );
+
  protected:
 
   void openRtApi( RtAudio::Api api );
@@ -770,15 +721,8 @@ public:
   RtApi();
   virtual ~RtApi();
   virtual RtAudio::Api getCurrentApi( void ) = 0;
-  unsigned int getDeviceCount( void );
-  std::vector<unsigned int> getDeviceIds( void );
-  std::vector<unsigned int> getDeviceIdsNoProbe(void);
-  std::vector<std::string> getDeviceNames( void );
-  RtAudio::DeviceInfo getDeviceInfo( unsigned int deviceId );
-  RtAudio::DeviceInfo getDeviceInfoNoProbe( unsigned int deviceId );
-  RtAudio::DeviceInfo getDeviceInfoByBusID(std::string busID);
-  virtual unsigned int getDefaultInputDevice( void );
-  virtual unsigned int getDefaultOutputDevice( void );
+  std::vector<RtAudio::DeviceInfo> getDeviceInfosNoProbe(void);
+  RtAudio::DeviceInfo getDeviceInfoByBusID(std::string busID);  
   RtAudioErrorType openStream( RtAudio::StreamParameters *outputParameters,
                                  RtAudio::StreamParameters *inputParameters,
                                  RtAudioFormat format, unsigned int sampleRate,
@@ -799,7 +743,7 @@ public:
   bool isStreamRunning( void ) const { return stream_.state == STREAM_RUNNING; }
   void setErrorCallback( RtAudioErrorCallback errorCallback ) { errorCallback_ = errorCallback; }
   void showWarnings( bool value ) { showWarnings_ = value; }
-
+  virtual RtAudioErrorType openAsioControlPanel( void );
 
 protected:
 
@@ -812,6 +756,7 @@ protected:
     STREAM_STOPPED,
     STREAM_STOPPING,
     STREAM_RUNNING,
+    STREAM_ERROR,
     STREAM_CLOSED = -50
   };
 
@@ -880,20 +825,16 @@ protected:
   RtApiStream stream_;
 
   /*!
-    Protected, api-specific method that attempts to probe all device
-    capabilities in a system. The function will not re-probe devices
-    that were previously found and probed. This function MUST be
-    implemented by all subclasses.  If an error is encountered during
-    the probe, a "warning" message may be reported and the internal
-    list of devices may be incomplete.
+  Protected, api-specific method that attempts to probe device 
+  information and fill info with params
   */
-  virtual void probeDevices( void );
+  virtual bool probeSingleDeviceInfo(RtAudio::DeviceInfo& info) = 0;
 
   /*!
     Protected, api-specific method that attempts to list all device
     in a system without probing.
   */
-  virtual void listDevices( void );
+  virtual void listDevices(void) = 0;
   
   /*!
     Protected, api-specific method that attempts to open a device
@@ -939,15 +880,8 @@ protected:
 // **************************************************************** //
 
 inline RtAudio::Api RtAudio :: getCurrentApi( void ) { return rtapi_->getCurrentApi(); }
-inline unsigned int RtAudio :: getDeviceCount( void ) { return rtapi_->getDeviceCount(); }
-inline RtAudio::DeviceInfo RtAudio :: getDeviceInfo( unsigned int deviceId ) { return rtapi_->getDeviceInfo( deviceId ); }
-inline RtAudio::DeviceInfo RtAudio :: getDeviceInfoNoProbe( unsigned int deviceId ) { return rtapi_->getDeviceInfoNoProbe( deviceId ); }
 inline RtAudio::DeviceInfo RtAudio::getDeviceInfoByBusID(std::string busID) { return rtapi_->getDeviceInfoByBusID(busID); }
-inline std::vector<unsigned int> RtAudio :: getDeviceIds( void ) { return rtapi_->getDeviceIds(); }
-inline std::vector<unsigned int> RtAudio::getDeviceIdsNoProbe(void) { return rtapi_->getDeviceIdsNoProbe(); }
-inline std::vector<std::string> RtAudio :: getDeviceNames( void ) { return rtapi_->getDeviceNames(); }
-inline unsigned int RtAudio :: getDefaultInputDevice( void ) { return rtapi_->getDefaultInputDevice(); }
-inline unsigned int RtAudio :: getDefaultOutputDevice( void ) { return rtapi_->getDefaultOutputDevice(); }
+inline std::vector<RtAudio::DeviceInfo> RtAudio::getDeviceInfosNoProbe(void) { return rtapi_->getDeviceInfosNoProbe(); }
 inline void RtAudio :: closeStream( void ) { return rtapi_->closeStream(); }
 inline RtAudioErrorType RtAudio :: startStream( void ) { return rtapi_->startStream(); }
 inline RtAudioErrorType RtAudio :: stopStream( void )  { return rtapi_->stopStream(); }
@@ -969,7 +903,7 @@ inline double RtAudio :: getStreamTime( void ) { return rtapi_->getStreamTime();
 inline void RtAudio :: setStreamTime( double time ) { return rtapi_->setStreamTime( time ); }
 inline void RtAudio :: setErrorCallback( RtAudioErrorCallback errorCallback ) { rtapi_->setErrorCallback( errorCallback ); }
 inline void RtAudio :: showWarnings( bool value ) { rtapi_->showWarnings( value ); }
-
+inline RtAudioErrorType RtAudio::openAsioControlPanel(void) { return rtapi_->openAsioControlPanel(); };
 #endif
 
 // Indentation settings for Vim and Emacs
