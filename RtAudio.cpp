@@ -1,3 +1,4 @@
+#include "RtAudio.h"
 /************************************************************************/
 /*! \class RtAudio
     \brief Realtime audio i/o C++ classes.
@@ -569,6 +570,17 @@ RtAudioErrorType RtApi :: error( RtAudioErrorType type )
   else
     std::cerr << '\n' << errorText_ << "\n\n";
   return type;
+}
+
+RtAudioErrorType RtApi::errorText(RtAudioErrorType type, const std::string& errorText)
+{
+    if ( type == RTAUDIO_WARNING && showWarnings_ == false ) return type;
+    if ( errorCallback_ ) {
+        errorCallback_( type, errorText );
+    }
+    else
+        std::cerr << '\n' << errorText_ << "\n\n";
+    return type;
 }
 
 /*

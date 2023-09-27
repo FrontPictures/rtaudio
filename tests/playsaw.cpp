@@ -13,6 +13,8 @@
 #include <cstdlib>
 #include <signal.h>
 #include <chrono>
+#include "cliutils.h"
+#include "audioutils.h"
 /*
 typedef char MY_TYPE;
 #define FORMAT RTAUDIO_SINT8
@@ -50,95 +52,6 @@ typedef double MY_TYPE;
 #define SLEEP( milliseconds ) usleep( (unsigned long) (milliseconds * 1000.0) )
 #endif
 
-// Interrupt handler function
-bool done;
-static void finish(int /*ignore*/) { done = true; }
-
-#define BASE_RATE 0.005
-#define TIME   1.0
-
-struct CLIParam {
-    std::string name;
-    std::string description;
-    bool optional = false;
-    std::string default_v;
-};
-
-#include <map>
-
-struct CLIParams {
-    std::vector<CLIParam> params;
-    int mOptionalParams = 0;
-    int mMandatoryParams = 0;
-    std::map<std::string, int> mParamToIndex;
-public:
-
-    CLIParams(std::vector<CLIParam> params_) : params(std::move(params_)) {
-        bool optional = false;
-        int idx = 0;
-        for (auto& p : params) {
-            mParamToIndex[p.name] = idx;
-            idx++;
-            if (p.optional) {
-                optional = true;
-                mOptionalParams++;
-            }
-            else {
-                mMandatoryParams++;
-            }
-            if (optional && !p.optional) {
-                throw std::runtime_error("Optional wrong");
-            }
-        }
-    }
-    std::string getShortString() const {
-        std::stringstream ss;
-        for (auto& p : params) {
-            if (p.optional) {
-                ss << "<";
-            }
-            ss << p.name;
-            if (p.optional) {
-                ss << ">";
-            }
-            ss << " ";
-        }
-        return ss.str();
-    }
-    std::string getFullString() const {
-        std::stringstream ss;
-        for (auto& p : params) {
-            ss << "\t";
-            ss << p.name;
-            ss << "\t\t";
-            ss << p.description;
-            ss << std::endl;
-        }
-        return ss.str();
-    }
-    bool checkCountArgc(int argc) {
-        argc--;
-        if (argc < mMandatoryParams) {
-            return false;
-        }
-        if (argc > mMandatoryParams + mOptionalParams) {
-            return false;
-        }
-        return true;
-    }
-    const char* getParamValue(const char* name, char* argv[], int argc) {
-        auto it = mParamToIndex.find(name);
-        if (it == mParamToIndex.end()) {
-            return nullptr;
-        }
-        argc--;
-        if (it->second >= argc) {
-            return params[it->second].default_v.c_str();
-        }
-        return argv[it->second + 1];
-    }
-};
-
 void usage(const CLIParams& params) {
     // Error function in case of incorrect command-line
     // argument specifications
@@ -150,76 +63,6 @@ void errorCallback(RtAudioErrorType /*type*/, const std::string& errorText)
 {
     // This example error handling function simply outputs the error message to stderr.
     std::cerr << "\nerrorCallback: " << errorText << "\n\n";
-}
-
-unsigned int getDeviceIndex(std::vector<std::string> deviceNames)
-{
-    unsigned int i;
-    std::string keyHit;
-    std::cout << '\n';
-    for (i = 0; i < deviceNames.size(); i++)
-        std::cout << "  Device #" << i << ": " << deviceNames[i] << '\n';
-    do {
-        std::cout << "\nChoose a device #: ";
-        std::cin >> i;
-    } while (i >= deviceNames.size());
-    std::getline(std::cin, keyHit);  // used to clear out stdin
-    return i;
-}
-
-inline float generate_sin(int x, int samplerate, float frequency, float amplitude)
-{
-    const float t = 2.0 * 3.14 * frequency / samplerate;
-    return amplitude * sinf(t * x);
-}
-
-template<class T>
-void write_float_to_data(T** data_out, bool planar, int channels, float value, int sample,
-    bool mix = false, int dst_offset = 0)
-{
-    T val = 0;
-    if (std::is_integral_v<T>) {
-        int bits_count = sizeof(T) * 8;
-        uint64_t values_count = pow(2, bits_count);
-        if (std::is_signed_v<T>) {
-            uint64_t half_values_count = values_count / 2;
-            value *= half_values_count;
-        }
-        else if (std::is_unsigned_v<T>) {
-            value += 1;
-            value *= values_count;
-        }
-        val = value;
-    }
-    else if (std::is_floating_point_v<T>) {
-        val = value;
-    }
-    for (int c = 0; c < channels; c++) {
-        if (planar) {
-            if (!mix)
-                data_out[c][sample + dst_offset] = val;
-            else
-                data_out[c][sample + dst_offset] += val;
-        }
-        else {
-            if (!mix)
-                data_out[0][channels * (sample + dst_offset) + c] = val;
-            else
-                data_out[0][channels * (sample + dst_offset) + c] += val;
-        }
-    }
-}
-
-template<class T>
-void fill_sin(T** data_out_void, bool planar, int channels, int samplerate, int samples_count,
-    int offset = 0, int frequency = 500, float amplitude = 0.5, bool mix = false,
-    int dst_offset = 0)
-{
-    float y = 0;
-    for (int x = 0; x < samples_count; x++) {
-        y = generate_sin(x + offset, samplerate, frequency, amplitude);
-        write_float_to_data(data_out_void, planar, channels, y, x, mix, dst_offset);
-    }
 }
 
 struct UserData {
@@ -249,14 +92,14 @@ int produceAudio(void* outputBuffer, void* /*inputBuffer*/, unsigned int nBuffer
     return 0;
 }
 
-bool playsin(RtAudio& dac, const RtAudio::DeviceInfo& info, int channels, unsigned int bufferFrames, unsigned int samplerate, bool interleaved, int durationMs, unsigned int retries) {
+bool playsin(RtAudio& dac, const RtAudio::DeviceInfo& info, int channels, unsigned int bufferFrames, unsigned int samplerate, bool interleaved, int durationMs, unsigned int retries, bool hog) {
     dac.showWarnings(true);
 
     UserData userData;
     userData.channels = channels;
     userData.samplerate = samplerate;
     userData.interleaved = interleaved;
-    userData.frequency = 400;
+    userData.frequency = 300;
 
     RtAudio::StreamParameters oParams;
     oParams.nChannels = channels;
@@ -265,12 +108,15 @@ bool playsin(RtAudio& dac, const RtAudio::DeviceInfo& info, int channels, unsign
 
     RtAudio::StreamOptions options;
     options.flags |= RTAUDIO_SCHEDULE_REALTIME;
+    if (hog) {
+        options.flags |= RTAUDIO_HOG_DEVICE;
+    }
 
     auto start_time = std::chrono::high_resolution_clock::now();
     for (int t = 0; t < retries; t++) {
         if (dac.openStream(&oParams, NULL, FORMAT, samplerate, &bufferFrames, &produceAudio, (void*)&userData, &options)) {
             std::cout << dac.getErrorText() << std::endl;
-            SLEEP(100);
+            SLEEP(500);
             continue;
         }
         if (dac.isStreamOpen() == false) return false;
@@ -287,15 +133,6 @@ bool playsin(RtAudio& dac, const RtAudio::DeviceInfo& info, int channels, unsign
     return true;
 }
 
-template<class T>
-bool vector_contains(const std::vector<T>& vec, const T& val) {
-    for (auto& e : vec) {
-        if (e == val)
-            return true;
-    }
-    return false;
-}
-
 void deviceCallback(unsigned int deviceId, RtAudioDeviceParam param, void* userData) {
     return;
 }
@@ -310,6 +147,7 @@ int main(int argc, char* argv[])
         {"buffer", "buffer frames", true, "1024"},
         {"time", "time duration in milliseconds", true, "1000"},
         {"tries", "retry count", true, "1"},
+        {"hog", "hog device", true, "0"},
         });
 
     if (params.checkCountArgc(argc) == false) {
@@ -326,6 +164,7 @@ int main(int argc, char* argv[])
     dac.registerExtraCallback(&deviceCallback, nullptr);
 
     std::vector<RtAudio::DeviceInfo> deviceInfos = dac.getDeviceInfosNoProbe();
+    deviceInfos = dac.getDeviceInfosNoProbe();
     if (deviceInfos.empty()) {
         std::cout << "\nNo audio devices found!\n";
         return 1;
@@ -356,6 +195,7 @@ int main(int argc, char* argv[])
     fs = (unsigned int)atoi(params.getParamValue("samplerate", argv, argc));
     durationMs = atoi(params.getParamValue("time", argv, argc));
     retries = atoi(params.getParamValue("tries", argv, argc));
+    bool hog = atoi(params.getParamValue("hog", argv, argc));
 
     selectedDevice = dac.getDeviceInfoByBusID(selectedDevice.busID);
     if (selectedDevice.ID == 0) {
@@ -411,10 +251,9 @@ int main(int argc, char* argv[])
     }
     std::cout << std::endl;
     std::cout << "Play samplerate: " << fs << std::endl;
-
     bufferFrames = atoi(params.getParamValue("buffer", argv, argc));
 
-    if (playsin(dac, selectedDevice, channels, bufferFrames, fs, true, durationMs, retries) == false) {
+    if (playsin(dac, selectedDevice, channels, bufferFrames, fs, true, durationMs, retries, hog) == false) {
         std::cout << "Failed to play stream" << std::endl;
         return 1;
     }
