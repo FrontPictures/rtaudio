@@ -166,117 +166,7 @@ RtApiWasapi::~RtApiWasapi()
     MUTEX_UNLOCK(&stream_.mutex);
 }
 
-unsigned int RtApiWasapi::getDefaultInputDevice(void)
-{
-    IMMDevice* devicePtr = NULL;
-    LPWSTR defaultId = NULL;
-    std::string id;
-
-    if (!deviceEnumerator_) return 0; // invalid ID
-    errorText_.clear();
-
-    // Get the default capture device Id.
-    HRESULT hr = deviceEnumerator_->GetDefaultAudioEndpoint(eCapture, eConsole, &devicePtr);
-    if (FAILED(hr)) {
-        errorText_ = "RtApiWasapi::getDefaultInputDevice: Unable to retrieve default capture device handle.";
-        goto Release;
-    }
-
-    hr = devicePtr->GetId(&defaultId);
-    if (FAILED(hr)) {
-        errorText_ = "RtApiWasapi::getDefaultInputDevice: Unable to get default capture device Id.";
-        goto Release;
-    }
-    id = convertCharPointerToStdString(defaultId);
-
-Release:
-    SAFE_RELEASE(devicePtr);
-    CoTaskMemFree(defaultId);
-
-    if (!errorText_.empty()) {
-        error(RTAUDIO_DRIVER_ERROR);
-        return 0;
-    }
-
-    for (unsigned int m = 0; m < deviceIds_.size(); m++) {
-        if (deviceIds_[m].first == id) {
-            if (deviceList_[m].isDefaultInput == false) {
-                deviceList_[m].isDefaultInput = true;
-                for (unsigned int j = m + 1; j < deviceIds_.size(); j++) {
-                    // make sure any remaining devices are not listed as the default
-                    deviceList_[j].isDefaultInput = false;
-                }
-            }
-            return deviceList_[m].ID;
-        }
-        deviceList_[m].isDefaultInput = false;
-    }
-
-    // If not found above, then do system probe of devices and try again.
-    probeDevices();
-    for (unsigned int m = 0; m < deviceIds_.size(); m++) {
-        if (deviceIds_[m].first == id) return deviceList_[m].ID;
-    }
-
-    return 0;
-}
-
-unsigned int RtApiWasapi::getDefaultOutputDevice(void)
-{
-    IMMDevice* devicePtr = NULL;
-    LPWSTR defaultId = NULL;
-    std::string id;
-
-    if (!deviceEnumerator_) return 0; // invalid ID
-    errorText_.clear();
-
-    // Get the default render device Id.
-    HRESULT hr = deviceEnumerator_->GetDefaultAudioEndpoint(eRender, eConsole, &devicePtr);
-    if (FAILED(hr)) {
-        errorText_ = "RtApiWasapi::getDefaultOutputDevice: Unable to retrieve default render device handle.";
-        goto Release;
-    }
-
-    hr = devicePtr->GetId(&defaultId);
-    if (FAILED(hr)) {
-        errorText_ = "RtApiWasapi::getDefaultOutputDevice: Unable to get default render device Id.";
-        goto Release;
-    }
-    id = convertCharPointerToStdString(defaultId);
-
-Release:
-    SAFE_RELEASE(devicePtr);
-    CoTaskMemFree(defaultId);
-
-    if (!errorText_.empty()) {
-        error(RTAUDIO_DRIVER_ERROR);
-        return 0;
-    }
-
-    for (unsigned int m = 0; m < deviceIds_.size(); m++) {
-        if (deviceIds_[m].first == id) {
-            if (deviceList_[m].isDefaultOutput == false) {
-                deviceList_[m].isDefaultOutput = true;
-                for (unsigned int j = m + 1; j < deviceIds_.size(); j++) {
-                    // make sure any remaining devices are not listed as the default
-                    deviceList_[j].isDefaultOutput = false;
-                }
-            }
-            return deviceList_[m].ID;
-        }
-        deviceList_[m].isDefaultOutput = false;
-    }
-
-    // If not found above, then do system probe of devices and try again.
-    probeDevices();
-    for (unsigned int m = 0; m < deviceIds_.size(); m++) {
-        if (deviceIds_[m].first == id) return deviceList_[m].ID;
-    }
-
-    return 0;
-}
-
-void RtApiWasapi::probeDevices(void)
+void RtApiWasapi::listDevices(void)
 {
     unsigned int captureDeviceCount = 0;
     unsigned int renderDeviceCount = 0;
@@ -442,6 +332,11 @@ Exit:
         error(RTAUDIO_DRIVER_ERROR);
     }
     return;
+}
+
+bool RtApiWasapi::probeSingleDeviceInfo(RtAudio::DeviceInfo& info)
+{
+    return false;
 }
 
 bool RtApiWasapi::probeDeviceInfo(RtAudio::DeviceInfo& info, LPWSTR deviceId, bool isCaptureDevice)
