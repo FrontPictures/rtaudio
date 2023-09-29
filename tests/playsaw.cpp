@@ -326,6 +326,7 @@ int main(int argc, char* argv[])
     dac.registerExtraCallback(&deviceCallback, nullptr);
 
     std::vector<RtAudio::DeviceInfo> deviceInfos = dac.getDeviceInfosNoProbe();
+    deviceInfos = dac.getDeviceInfosNoProbe();
     if (deviceInfos.empty()) {
         std::cout << "\nNo audio devices found!\n";
         return 1;
@@ -410,8 +411,7 @@ int main(int argc, char* argv[])
             std::cout << selectedDevice.sampleRates[j] << " ";
     }
     std::cout << std::endl;
-    std::cout << "Play samplerate: " << fs << std::endl;
-
+    std::cout << "Play samplerate: " << fs << std::endl;    
     bufferFrames = atoi(params.getParamValue("buffer", argv, argc));
 
     if (playsin(dac, selectedDevice, channels, bufferFrames, fs, true, durationMs, retries) == false) {

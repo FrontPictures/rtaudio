@@ -305,6 +305,8 @@ class RTAUDIO_DLL_PUBLIC RtAudio
     unsigned int currentSampleRate{};   /*!< Current sample rate, system sample rate as currently configured. */
     unsigned int preferredSampleRate{}; /*!< Preferred sample rate, e.g. for WASAPI the system sample rate. */
     RtAudioFormat nativeFormats{};  /*!< Bit mask of supported data formats. */
+    bool supportsOutput = false;
+    bool supportsInput = false;
   };
 
   //! The structure for specifying input or output stream parameters.
@@ -744,7 +746,7 @@ public:
   void setErrorCallback( RtAudioErrorCallback errorCallback ) { errorCallback_ = errorCallback; }
   void showWarnings( bool value ) { showWarnings_ = value; }
   virtual RtAudioErrorType openAsioControlPanel( void );
-
+  
 protected:
 
   static const unsigned int MAX_SAMPLE_RATES;
@@ -761,10 +763,10 @@ protected:
   };
 
   enum StreamMode {
-    OUTPUT,
-    INPUT,
-    DUPLEX,
-    UNINITIALIZED = -75
+      OUTPUT,
+      INPUT,
+      DUPLEX,
+      UNINITIALIZED = -75
   };
 
   // A protected structure used for buffer conversion.

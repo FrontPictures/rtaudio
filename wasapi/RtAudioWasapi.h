@@ -39,12 +39,14 @@ private:
     IMMDeviceEnumerator* deviceEnumerator_;
     RtAudioDeviceCallback callbackExtra_ = nullptr;
     NotificationHandler wasapiNotificationHandler_;
-    std::vector< std::pair< std::string, bool> > deviceIds_;
     
     void listDevices(void) override;
+    void listAudioDevices( EDataFlow dataFlow );
+    void updateDefaultDevices();
+
     bool probeSingleDeviceInfo(RtAudio::DeviceInfo& info) override;
 
-    bool probeDeviceInfo(RtAudio::DeviceInfo& info, LPWSTR deviceId, bool isCaptureDevice);
+    bool probeDeviceName(RtAudio::DeviceInfo& info, IMMDevice* device);
     bool probeDeviceOpen(unsigned int deviceId, StreamMode mode, unsigned int channels,
         unsigned int firstChannel, unsigned int sampleRate,
         RtAudioFormat format, unsigned int* bufferSize,

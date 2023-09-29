@@ -4,6 +4,7 @@
 
 std::string convertCharPointerToStdString(const wchar_t* text);
 std::string convertCharPointerToStdString(const char* text);
+std::wstring convertStdStringToWString(const std::string& text);
 
 #if defined(_MSC_VER)
 #define MUTEX_INITIALIZE(A) InitializeCriticalSection(A)
