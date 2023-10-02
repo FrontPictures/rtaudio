@@ -774,7 +774,7 @@ bool RtApiAsio::callbackEvent(long bufferIndex)
 
         if (stream_.doConvertBuffer[0]) {
 
-            convertBuffer(stream_.deviceBuffer, stream_.userBuffer[0], stream_.convertInfo[0]);
+            convertBuffer(stream_.deviceBuffer, stream_.userBuffer[0], stream_.convertInfo[0], stream_.bufferSize);
             if (stream_.doByteSwap[0])
                 byteSwapBuffer(stream_.deviceBuffer,
                     stream_.bufferSize * stream_.nDeviceChannels[0],
@@ -821,7 +821,7 @@ bool RtApiAsio::callbackEvent(long bufferIndex)
                 byteSwapBuffer(stream_.deviceBuffer,
                     stream_.bufferSize * stream_.nDeviceChannels[1],
                     stream_.deviceFormat[1]);
-            convertBuffer(stream_.userBuffer[1], stream_.deviceBuffer, stream_.convertInfo[1]);
+            convertBuffer(stream_.userBuffer[1], stream_.deviceBuffer, stream_.convertInfo[1], stream_.bufferSize);
 
         }
         else {

@@ -43,15 +43,6 @@ typedef double MY_TYPE;
 #define SCALE  1.0
 */
 
-// Platform-dependent sleep routines.
-#if defined( WIN32 )
-#include <windows.h>
-#define SLEEP( milliseconds ) Sleep( (DWORD) milliseconds ) 
-#else // Unix variants
-#include <unistd.h>
-#define SLEEP( milliseconds ) usleep( (unsigned long) (milliseconds * 1000.0) )
-#endif
-
 void usage(const CLIParams& params) {
     // Error function in case of incorrect command-line
     // argument specifications
@@ -118,8 +109,7 @@ bool playsin(RtAudio& dac, const RtAudio::DeviceInfo& info, int channels, unsign
             std::cout << dac.getErrorText() << std::endl;
             SLEEP(500);
             continue;
-        }
-        if (dac.isStreamOpen() == false) return false;
+        }        
         dac.startStream();
         std::cout << "\nPlaying ... (buffer size = " << bufferFrames << ").\n";
         auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time).count();
@@ -219,36 +209,7 @@ int main(int argc, char* argv[])
         std::cout << "Samplerate not supported" << std::endl;
         return 1;
     }
-
-    std::cout << "Name: " << selectedDevice.name << std::endl;
-    std::cout << "BusID: " << selectedDevice.busID << std::endl;
-    std::cout << "Input channels: " << selectedDevice.inputChannels << std::endl;
-    std::cout << "Output channels: " << selectedDevice.outputChannels << std::endl;
-    std::cout << "Native samplerate: " << selectedDevice.preferredSampleRate << std::endl;
-    if (selectedDevice.nativeFormats == 0)
-        std::cout << "No natively supported data formats(?)!";
-    else {
-        std::cout << "Natively supported data formats:\n";
-        if (selectedDevice.nativeFormats & RTAUDIO_SINT8)
-            std::cout << "  8-bit int\n";
-        if (selectedDevice.nativeFormats & RTAUDIO_SINT16)
-            std::cout << "  16-bit int\n";
-        if (selectedDevice.nativeFormats & RTAUDIO_SINT24)
-            std::cout << "  24-bit int\n";
-        if (selectedDevice.nativeFormats & RTAUDIO_SINT32)
-            std::cout << "  32-bit int\n";
-        if (selectedDevice.nativeFormats & RTAUDIO_FLOAT32)
-            std::cout << "  32-bit float\n";
-        if (selectedDevice.nativeFormats & RTAUDIO_FLOAT64)
-            std::cout << "  64-bit float\n";
-    }
-    if (selectedDevice.sampleRates.size() < 1)
-        std::cout << "No supported sample rates found!";
-    else {
-        std::cout << "Supported sample rates = ";
-        for (unsigned int j = 0; j < selectedDevice.sampleRates.size(); j++)
-            std::cout << selectedDevice.sampleRates[j] << " ";
-    }
+    print_device(selectedDevice);
     std::cout << std::endl;
     std::cout << "Play samplerate: " << fs << std::endl;
     bufferFrames = atoi(params.getParamValue("buffer", argv, argc));

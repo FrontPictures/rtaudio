@@ -6,6 +6,7 @@
 #include <memory>
 #include <functional>
 #include "OnExit.hpp"
+#include <cassert>
 
 namespace {
 #ifndef INITGUID
@@ -896,7 +897,6 @@ void RtApiWasapi::wasapiThread()
     RtAudioCallback callback = (RtAudioCallback)stream_.callbackInfo.callback;
     BYTE* streamBuffer = NULL;
     DWORD captureFlags = 0;
-    unsigned int numFramesPadding = 0;
     unsigned int convBufferSize = 0;
     bool loopbackEnabled = stream_.deviceId[INPUT] == stream_.deviceId[OUTPUT];
     bool callbackPushed = true;
@@ -931,55 +931,93 @@ void RtApiWasapi::wasapiThread()
             errorText(errorType, "RtApiWasapi::wasapiThread: Unable to wait event.");
             break;
         }
-        if (shareMode == AUDCLNT_SHAREMODE_SHARED) {
-            hr = audioClient->GetCurrentPadding(&numFramesPadding);
-            if (FAILED(hr)) {
-                errorText(errorType, "RtApiWasapi::wasapiThread: Unable to retrieve render buffer padding.");
-                break;
+
+        void* userBufferInput = nullptr;
+        void* userBufferOutput = nullptr;
+        UINT32 bufferFrameAvailableCount = 0;
+
+        if (!isInput) {
+            unsigned int numFramesPadding = 0;
+            if (shareMode == AUDCLNT_SHAREMODE_SHARED) {
+                hr = audioClient->GetCurrentPadding(&numFramesPadding);
+                if (FAILED(hr)) {
+                    errorText(errorType, "RtApiWasapi::wasapiThread: Unable to retrieve render buffer padding.");
+                    break;
+                }
             }
-        }
-        UINT32 bufferFrameAvailableCount = bufferFrameCount - numFramesPadding;
-        if (bufferFrameAvailableCount != 0) {
+            bufferFrameAvailableCount = bufferFrameCount - numFramesPadding;
+            if (bufferFrameAvailableCount == 0) {
+                continue;
+            }
+
             hr = renderClient->GetBuffer(bufferFrameAvailableCount, &streamBuffer);
             if (FAILED(hr)) {
                 errorText(errorType, "RtApiWasapi::wasapiThread: Unable to retrieve render buffer.");
                 break;
             }
-
-            void* userBufferInput = nullptr;
-            void* userBufferOutput = nullptr;
-            if (stream_.doConvertBuffer[modeDirection]) {
-                userBufferOutput = stream_.userBuffer[modeDirection];
+            if (stream_.doConvertBuffer[StreamMode::OUTPUT]) {
+                userBufferOutput = stream_.userBuffer[OUTPUT];
             }
             else {
                 userBufferOutput = streamBuffer;
             }
-            callbackResult = callback(userBufferOutput,
-                userBufferInput,
-                bufferFrameAvailableCount,
-                getStreamTime(),
-                captureFlags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY ? RTAUDIO_INPUT_OVERFLOW : 0,
-                stream_.callbackInfo.userData);
-            RtApi::tickStreamTime();
-
-            if (callbackResult == 1 || callbackResult == 2) {
-                //stop it
+        }
+        else {
+            hr = captureClient->GetBuffer(&streamBuffer, &bufferFrameAvailableCount, &captureFlags, NULL, NULL);
+            if (FAILED(hr)) {
+                errorText(errorType, "RtApiWasapi::wasapiThread: Unable to get capture buffer.");
+                break;
             }
+            if (bufferFrameAvailableCount == 0 || hr == AUDCLNT_S_BUFFER_EMPTY || !streamBuffer) {
+                continue;
+            }
+            if (stream_.doConvertBuffer[modeDirection]) {
+                userBufferInput = stream_.userBuffer[INPUT];
+                convertBuffer(stream_.userBuffer[modeDirection],
+                    (char*)streamBuffer,
+                    stream_.convertInfo[modeDirection], bufferFrameAvailableCount);
+            }
+            else {
+                userBufferInput = streamBuffer;
+            }
+        }
 
+
+        callbackResult = callback(userBufferOutput,
+            userBufferInput,
+            bufferFrameAvailableCount,
+            getStreamTime(),
+            captureFlags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY ? RTAUDIO_INPUT_OVERFLOW : 0,
+            stream_.callbackInfo.userData);
+        RtApi::tickStreamTime();
+        if (callbackResult == 1 || callbackResult == 2) {
+            //stop it
+        }
+
+
+        if (!isInput) {
             if (stream_.doConvertBuffer[modeDirection])
             {
                 // Convert callback buffer to stream format
                 convertBuffer((char*)streamBuffer,
                     stream_.userBuffer[modeDirection],
-                    stream_.convertInfo[modeDirection]);
+                    stream_.convertInfo[modeDirection], bufferFrameAvailableCount);
+            }
+            hr = renderClient->ReleaseBuffer(bufferFrameAvailableCount, 0);
+            if (FAILED(hr)) {
+                errorText(errorType, "RtApiWasapi::wasapiThread: Unable to release render buffer.");
+                break;
+            }
+        }
+        else {
+            hr = captureClient->ReleaseBuffer(bufferFrameAvailableCount);
+            if (FAILED(hr)) {
+                errorText(errorType, "RtApiWasapi::wasapiThread: Unable to release render buffer.");
+                break;
             }
         }
 
-        hr = renderClient->ReleaseBuffer(bufferFrameAvailableCount, 0);
-        if (FAILED(hr)) {
-            errorText(errorType, "RtApiWasapi::wasapiThread: Unable to release render buffer.");
-            break;
-        }
-        streamBuffer = NULL;
+        streamBuffer = nullptr;
+        captureFlags = 0;
     }
 }
