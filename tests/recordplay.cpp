@@ -10,7 +10,6 @@ using namespace std;
 
 typedef int32_t MY_TYPE;
 #define FORMAT RTAUDIO_SINT32
-#define SCALE  32767.0
 
 void errorCallback(RtAudioErrorType /*type*/, const std::string& errorText)
 {

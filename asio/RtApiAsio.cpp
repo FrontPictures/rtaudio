@@ -676,14 +676,14 @@ RtAudioErrorType RtApiAsio::startStream()
         return error(RTAUDIO_WARNING);
     }
 
+    asioXRun = false;
+    stream_.state = STREAM_RUNNING;
     ASIOError result = ASIOStart();
     if (result != ASE_OK) {
         errorStream_ << "RtApiAsio::startStream: error (" << getAsioErrorString(result) << ") starting device.";
         errorText_ = errorStream_.str();
         goto unlock;
     }
-    asioXRun = false;
-    stream_.state = STREAM_RUNNING;
 
 unlock:
     if (result == ASE_OK) return RTAUDIO_NO_ERROR;
@@ -759,49 +759,9 @@ bool RtApiAsio::callbackEvent(long bufferIndex)
         status |= RTAUDIO_INPUT_OVERFLOW;
         asioXRun = false;
     }
-    int cbReturnValue = callback(stream_.userBuffer[0], stream_.userBuffer[1],
-        stream_.bufferSize, streamTime, status, info->userData);
-    if (cbReturnValue == 2 || cbReturnValue == 1) {
-        stopStream();
-        return SUCCESS;
-    }
 
-    unsigned int nChannels, bufferBytes, i, j;
-    nChannels = stream_.nDeviceChannels[0] + stream_.nDeviceChannels[1];
-    if (stream_.mode == OUTPUT || stream_.mode == DUPLEX) {
-
-        bufferBytes = stream_.bufferSize * formatBytes(stream_.deviceFormat[0]);
-
-        if (stream_.doConvertBuffer[0]) {
-
-            convertBuffer(stream_.deviceBuffer, stream_.userBuffer[0], stream_.convertInfo[0], stream_.bufferSize);
-            if (stream_.doByteSwap[0])
-                byteSwapBuffer(stream_.deviceBuffer,
-                    stream_.bufferSize * stream_.nDeviceChannels[0],
-                    stream_.deviceFormat[0]);
-
-            for (i = 0, j = 0; i < nChannels; i++) {
-                if (handle->bufferInfos[i].isInput != ASIOTrue)
-                    memcpy(handle->bufferInfos[i].buffers[bufferIndex],
-                        &stream_.deviceBuffer[j++ * bufferBytes], bufferBytes);
-            }
-
-        }
-        else {
-
-            if (stream_.doByteSwap[0])
-                byteSwapBuffer(stream_.userBuffer[0],
-                    stream_.bufferSize * stream_.nUserChannels[0],
-                    stream_.userFormat);
-
-            for (i = 0, j = 0; i < nChannels; i++) {
-                if (handle->bufferInfos[i].isInput != ASIOTrue)
-                    memcpy(handle->bufferInfos[i].buffers[bufferIndex],
-                        &stream_.userBuffer[0][bufferBytes * j++], bufferBytes);
-            }
-
-        }
-    }
+    unsigned int nChannels = stream_.nDeviceChannels[0] + stream_.nDeviceChannels[1];
+    unsigned int bufferBytes = 0, i = 0, j = 0;
 
     if (stream_.mode == INPUT || stream_.mode == DUPLEX) {
 
@@ -837,6 +797,49 @@ bool RtApiAsio::callbackEvent(long bufferIndex)
                 byteSwapBuffer(stream_.userBuffer[1],
                     stream_.bufferSize * stream_.nUserChannels[1],
                     stream_.userFormat);
+        }
+    }
+
+
+    int cbReturnValue = callback(stream_.userBuffer[0], stream_.userBuffer[1],
+        stream_.bufferSize, streamTime, status, info->userData);
+    if (cbReturnValue == 2 || cbReturnValue == 1) {
+        stopStream();
+        return SUCCESS;
+    }
+
+    if (stream_.mode == OUTPUT || stream_.mode == DUPLEX) {
+
+        bufferBytes = stream_.bufferSize * formatBytes(stream_.deviceFormat[0]);
+
+        if (stream_.doConvertBuffer[0]) {
+
+            convertBuffer(stream_.deviceBuffer, stream_.userBuffer[0], stream_.convertInfo[0], stream_.bufferSize);
+            if (stream_.doByteSwap[0])
+                byteSwapBuffer(stream_.deviceBuffer,
+                    stream_.bufferSize * stream_.nDeviceChannels[0],
+                    stream_.deviceFormat[0]);
+
+            for (i = 0, j = 0; i < nChannels; i++) {
+                if (handle->bufferInfos[i].isInput != ASIOTrue)
+                    memcpy(handle->bufferInfos[i].buffers[bufferIndex],
+                        &stream_.deviceBuffer[j++ * bufferBytes], bufferBytes);
+            }
+
+        }
+        else {
+
+            if (stream_.doByteSwap[0])
+                byteSwapBuffer(stream_.userBuffer[0],
+                    stream_.bufferSize * stream_.nUserChannels[0],
+                    stream_.userFormat);
+
+            for (i = 0, j = 0; i < nChannels; i++) {
+                if (handle->bufferInfos[i].isInput != ASIOTrue)
+                    memcpy(handle->bufferInfos[i].buffers[bufferIndex],
+                        &stream_.userBuffer[0][bufferBytes * j++], bufferBytes);
+            }
+
         }
     }
 
