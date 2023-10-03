@@ -3,8 +3,8 @@
 #include <cstdlib>
 #include <chrono>
 #include "cliutils.h"
-#include "audioutils.h"
 #include "ringbuf.hpp"
+#include <thread>
 
 using namespace std;
 

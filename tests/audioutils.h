@@ -1,5 +1,7 @@
 #pragma once
 #include <math.h>
+#include <type_traits>
+#include <cstdint>
 
 inline float generate_sin(int x, int samplerate, float frequency, float amplitude)
 {

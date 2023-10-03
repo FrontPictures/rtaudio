@@ -154,7 +154,6 @@ int main(int argc, char* argv[])
     dac.registerExtraCallback(&deviceCallback, nullptr);
 
     std::vector<RtAudio::DeviceInfo> deviceInfos = dac.getDeviceInfosNoProbe();
-    deviceInfos = dac.getDeviceInfosNoProbe();
     if (deviceInfos.empty()) {
         std::cout << "\nNo audio devices found!\n";
         return 1;
@@ -169,10 +168,17 @@ int main(int argc, char* argv[])
         else {
             std::cout << " ";
         }
-        std::cout << d.name << std::endl;
+        std::cout << d.name << " (";
         if (thisDevice) {
             selectedDevice = d;
         }
+        if (d.supportsInput){
+            std::cout<<"i";
+        }
+        if (d.supportsOutput){
+            std::cout<<"o";
+        }
+        std::cout << ")" << std::endl;
     }
     std::cout << std::endl;
     if (selectedDevice.ID == 0) {
