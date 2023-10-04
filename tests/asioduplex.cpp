@@ -26,29 +26,42 @@ struct UserData {
 };
 
 int audioCallback(void* outputBuffer, void* inputBuffer, unsigned int nBufferFrames,
-    double streamTime, RtAudioStreamStatus status, void* data) {
+                  double streamTime, RtAudioStreamStatus status, void* data) {
     UserData* userData = static_cast<UserData*>(data);
     memcpy(outputBuffer, inputBuffer, sizeof(MY_TYPE) * userData->channels * nBufferFrames);
     return 0;
 }
 
+#include <cctype>
+#include <algorithm>
+
 int main(int argc, char* argv[]) {
     CLIParams params({
-        {"device", "device name to use", false},
-        {"channels", "number of channels", true, "0"},
-        {"samplerate", "the sample rate", true, "0"},
-        {"buffer", "buffer frames", true, "1024"},
-        {"time", "time duration in milliseconds", true, "1000"},
-        {"tries", "retry count", true, "1"}
-        });
+                         {"system", "asio or alsa", false},
+                         {"device", "device name to use", false},
+                         {"channels", "number of channels", true, "0"},
+                         {"samplerate", "the sample rate", true, "0"},
+                         {"buffer", "buffer frames", true, "1024"},
+                         {"time", "time duration in milliseconds", true, "1000"},
+                         {"tries", "retry count", true, "1"}
+                     });
 
     if (params.checkCountArgc(argc) == false) {
         usage(params);
         return 1;
     }
 
-    RtAudio dac(RtAudio::Api::WINDOWS_ASIO, &errorCallback);
+    RtAudio::Api api = RtAudio::getCompiledApiByName(params.getParamValue("system", argv, argc));
 
+    if (api == RtAudio::Api::UNSPECIFIED){
+        cout<<"API not found"<<endl;
+        return 1;
+    }
+    if (api != RtAudio::Api::WINDOWS_ASIO && api != RtAudio::Api::LINUX_ALSA){
+        cout<<"ASIO or ALSA needed"<<endl;
+        return 1;
+    }
+    RtAudio dac(api, &errorCallback);
     std::vector<RtAudio::DeviceInfo> deviceInfos = dac.getDeviceInfosNoProbe();
     deviceInfos = dac.getDeviceInfosNoProbe();
     if (deviceInfos.empty()) {
@@ -130,7 +143,7 @@ int main(int argc, char* argv[]) {
             continue;
         }
         dac.startStream();
-        std::cout << "\Playback... (buffer size = " << bufferFrames << ").\n";
+        std::cout << "Playback... (buffer size = " << bufferFrames << ").\n";
         auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time).count();
         while (dac.isStreamRunning() && elapsed_ms < durationMs) {
             elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time).count();

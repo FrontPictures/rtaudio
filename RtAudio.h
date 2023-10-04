@@ -883,7 +883,7 @@ protected:
 //
 // **************************************************************** //
 
-inline RtAudio::Api RtAudio :: getCurrentApi( void ) { return rtapi_->getCurrentApi(); }
+inline RtAudio::Api RtAudio :: getCurrentApi( void ) { if (rtapi_)return rtapi_->getCurrentApi(); return RtAudio::UNSPECIFIED; }
 inline RtAudio::DeviceInfo RtAudio::getDeviceInfoByBusID(std::string busID) { return rtapi_->getDeviceInfoByBusID(busID); }
 inline std::vector<RtAudio::DeviceInfo> RtAudio::getDeviceInfosNoProbe(void) { return rtapi_->getDeviceInfosNoProbe(); }
 inline void RtAudio :: closeStream( void ) { return rtapi_->closeStream(); }

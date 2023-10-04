@@ -3,6 +3,7 @@
 #include <limits.h>
 #include "RtApiAlsa.h"
 #include "utils.h"
+#include <optional>
 
 namespace{
 static void *alsaCallbackHandler( void *ptr )
@@ -44,6 +45,54 @@ struct AlsaHandle {
 #endif
 };
 
+inline bool StringContains(std::string text, const std::string& v){
+    std::transform(text.begin(), text.end(), text.begin(), ::toupper);
+    if (text.find(v)==std::string::npos)
+        return false;
+    return true;
+}
+
+inline std::optional<std::string> busIdToCard(std::string busID){
+    int pos = busID.find(",");
+    if (pos==std::string::npos){
+        return {};
+    }
+    return busID.substr(0, pos);
+}
+
+void setUnmute(snd_ctl_t* ctl, snd_ctl_elem_info_t* elem_info, snd_ctl_elem_value_t* elem_value, unsigned int channel)
+{
+    snd_ctl_elem_value_set_boolean(elem_value, channel, 1);
+}
+
+void setEnumeratedDisabled(snd_ctl_t* ctl, snd_ctl_elem_info_t * elem_info, snd_ctl_elem_value_t * elem_value, unsigned int channel)
+{
+    int err=0;
+    int enum_count = snd_ctl_elem_info_get_items (elem_info);
+    if (enum_count == 0)
+        return;
+    int disabledId = -1;
+    for (int en=0;en<enum_count;en++){
+        snd_ctl_elem_info_set_item(elem_info, en);
+        err = snd_ctl_elem_info(ctl, elem_info);
+        if (err<0)
+            return;
+        std::string itemName = snd_ctl_elem_info_get_item_name(elem_info);
+        if (StringContains(itemName, "DISABLE")){
+            disabledId = en;
+            break;
+        }
+    }
+    if (disabledId==-1)
+        return;
+    snd_ctl_elem_value_set_enumerated(elem_value, channel, disabledId);
+}
+
+void setMaxVolume(snd_ctl_t* ctl, snd_ctl_elem_info_t* elem_info, snd_ctl_elem_value_t* elem_value, unsigned int channel)
+{
+    long maxValue = snd_ctl_elem_info_get_max(elem_info);
+    snd_ctl_elem_value_set_integer(elem_value, channel, maxValue);
+}
 }
 
 RtApiAlsa :: RtApiAlsa()
@@ -78,6 +127,13 @@ bool RtApiAlsa :: probeDeviceOpen( unsigned int deviceId, StreamMode mode, unsig
             break;
         }
     }
+
+    if (name.empty()){
+        errorStream_ << "RtApiAlsa::probeDeviceOpen: device not found (" << name << ").";
+        errorText_ = errorStream_.str();
+        return FAILURE;
+    }
+    setMaxVolumes(name);
 
     snd_pcm_stream_t stream;
     if ( mode == OUTPUT )
@@ -523,6 +579,126 @@ error:
     return FAILURE;
 }
 
+bool RtApiAlsa::setMaxVolumes(std::string busID)
+{
+    auto card_id_opt = busIdToCard(busID);
+    if (!card_id_opt.has_value()){
+        errorText_ = "RtApiAlsa::setMaxVolume failed to get card by busID.";
+        error(RTAUDIO_SYSTEM_ERROR);
+        return false;
+    }
+    auto cardId = card_id_opt.value();
+    int err = 0;
+    snd_ctl_t* ctl = NULL;
+    snd_ctl_elem_list_t* list = NULL;
+
+
+    err = snd_ctl_elem_list_malloc(&list);
+    if (err<0){
+        errorText_ = "RtApiAlsa::setMaxVolume failed to allocate list.";
+        error(RTAUDIO_DRIVER_ERROR);
+        return false;
+    }
+
+    err = snd_ctl_open(&ctl, cardId.c_str(), 0);
+    if (err<0){
+        errorText_ = "RtApiAlsa::setMaxVolume failed open device.";
+        error(RTAUDIO_DRIVER_ERROR);
+        return false;
+    }
+
+    err = snd_ctl_elem_list(ctl, list);
+    if (err<0){
+        errorText_ = "RtApiAlsa::setMaxVolume failed fill elements list.";
+        error(RTAUDIO_DRIVER_ERROR);
+        return false;
+    }
+
+    unsigned int count = snd_ctl_elem_list_get_count(list);
+    if (count==0){
+        //no elements, is it possible?
+        return true;
+    }
+    err = snd_ctl_elem_list_alloc_space(list, count);
+    if (err<0){
+        errorText_ = "RtApiAlsa::setMaxVolume failed allocate memory.";
+        error(RTAUDIO_MEMORY_ERROR);
+        return false;
+    }
+    err = snd_ctl_elem_list(ctl, list);
+    if (err<0){
+        errorText_ = "RtApiAlsa::setMaxVolume failed fill elements list.";
+        error(RTAUDIO_DRIVER_ERROR);
+        return false;
+    }
+    for (int e=0;e<count;e++){
+        snd_ctl_elem_value_t* elem_value = NULL;
+        snd_ctl_elem_info_t* elem_info = NULL;
+        snd_ctl_elem_info_alloca(&elem_info);//it is on stack
+        snd_ctl_elem_value_alloca (&elem_value);//it is on stack
+
+        snd_ctl_elem_info_set_numid(elem_info, snd_ctl_elem_list_get_numid(list,e));
+        err = snd_ctl_elem_info(ctl, elem_info);
+        if (err<0){
+            errorText_ = "RtApiAlsa::setMaxVolume failed to get element info.";
+            error(RTAUDIO_DRIVER_ERROR);
+            continue;
+        }
+        if (!snd_ctl_elem_info_is_writable(elem_info)){
+            continue;
+        }
+        unsigned int channels = snd_ctl_elem_info_get_count(elem_info);
+        if (channels == 0){
+            continue;
+        }
+        std::string name = snd_ctl_elem_list_get_name(list, e);
+        if (name.empty()){
+            continue;
+        }
+
+        void(*setParamFun)(snd_ctl_t* ctl, snd_ctl_elem_info_t* elem_info, snd_ctl_elem_value_t* elem_value, unsigned int channel) = nullptr;
+        if (StringContains(name, "VOLUME")){
+            if (snd_ctl_elem_info_get_type(elem_info) != SND_CTL_ELEM_TYPE_INTEGER){
+                continue;
+            }
+            setParamFun = &setMaxVolume;
+        }
+        if (StringContains(name, "SWITCH")){
+            if (snd_ctl_elem_info_get_type(elem_info) != SND_CTL_ELEM_TYPE_BOOLEAN){
+                continue;
+            }
+            setParamFun = &setUnmute;
+        }
+        if (StringContains(name, "LOOPBACK")){
+            if (snd_ctl_elem_info_get_type(elem_info) != SND_CTL_ELEM_TYPE_ENUMERATED){
+                continue;
+            }
+            setParamFun = &setEnumeratedDisabled;
+        }
+        if (StringContains(name,"AUTO-MUTE")){
+            if (snd_ctl_elem_info_get_type(elem_info) != SND_CTL_ELEM_TYPE_ENUMERATED){
+                continue;
+            }
+            setParamFun = &setEnumeratedDisabled;
+        }
+
+        if (!setParamFun){
+            continue;
+        }
+
+        snd_ctl_elem_value_set_numid(elem_value, snd_ctl_elem_list_get_numid(list, e));
+        for (int c=0; c<channels;c++){
+            setParamFun(ctl, elem_info, elem_value, c);
+        }
+        err = snd_ctl_elem_write(ctl, elem_value);
+        if (err<0){
+            errorText_ = "RtApiAlsa::setMaxVolume failed to write element info.";
+            error(RTAUDIO_DRIVER_ERROR);
+        }
+    }
+    return true;
+}
+
 void RtApiAlsa :: closeStream()
 {
     if ( stream_.state == STREAM_CLOSED ) {
@@ -922,7 +1098,6 @@ void RtApiAlsa::listDevices()
     snd_card_next( &card );
     while ( card >= 0 ) {
         sprintf( name, "hw:%d", card );
-        printf("Card: %d\n", card);
         result = snd_ctl_open( &handle, name, 0 );
         if ( result < 0 ) {
             handle = 0;
@@ -949,7 +1124,6 @@ void RtApiAlsa::listDevices()
             }
             if ( device < 0 )
                 break;
-            printf("Device: %d\n", device);
 
             snd_pcm_info_set_device( pcminfo, device );
             snd_pcm_info_set_subdevice( pcminfo, 0 );
