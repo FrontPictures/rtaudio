@@ -30,6 +30,4 @@ private:
                           unsigned int firstChannel, unsigned int sampleRate,
                           RtAudioFormat format, unsigned int *bufferSize,
                           RtAudio::StreamOptions *options ) override;    
-
-    bool setMaxVolumes(std::string cardId);
 };

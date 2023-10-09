@@ -143,7 +143,7 @@ int main(int argc, char* argv[]) {
             continue;
         }
         dac.startStream();
-        std::cout << "Playback... (buffer size = " << bufferFrames << ").\n";
+        std::cout << "Playback... (buffer size = " << bufferFrames << ")" << endl;
         auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time).count();
         while (dac.isStreamRunning() && elapsed_ms < durationMs) {
             elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time).count();
