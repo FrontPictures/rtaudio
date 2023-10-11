@@ -905,7 +905,7 @@ protected:
     Protected method used to perform format, channel number, and/or interleaving
     conversions between the user and device buffers.
   */
-  void convertBuffer( char *outBuffer, char *inBuffer, ConvertInfo &info );
+  void convertBuffer( char *outBuffer, char *inBuffer, ConvertInfo &info, unsigned int bufferSize = 0);
 
   //! Protected common method used to perform byte-swapping on buffers.
   void byteSwapBuffer( char *buffer, unsigned int samples, RtAudioFormat format );
