@@ -9295,7 +9295,8 @@ void RtApiAlsa :: callbackEvent()
         }
       }
       else if (result == -EAGAIN){
-          usleep(stream_.bufferSize * (1000000 / 2) / stream_.sampleRate);
+          uint64_t bufsize64 = stream_.bufferSize;
+          usleep(bufsize64 * (1000000 / 2) / stream_.sampleRate);
           goto unlock;
       }
       else {
