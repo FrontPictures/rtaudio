@@ -9303,20 +9303,29 @@ void RtApiAlsa :: callbackEvent()
         errorText_ = errorStream_.str();
       }
       error( RTAUDIO_WARNING );
-      goto tryOutput;
+      goto unlock;
     }
+    int samplesRead = result;
 
     // Do byte swapping if necessary.
     if ( stream_.doByteSwap[1] )
-      byteSwapBuffer( buffer, result * channels, format );
+      byteSwapBuffer( buffer, samplesRead * channels, format );
 
     // Do buffer conversion if necessary.
     if ( stream_.doConvertBuffer[1] )
-      convertBuffer( stream_.userBuffer[1], stream_.deviceBuffer, stream_.convertInfo[1], result);
+      convertBuffer( stream_.userBuffer[1], stream_.deviceBuffer, stream_.convertInfo[1], samplesRead);
 
     // Check stream latency
     result = snd_pcm_delay( handle[1], &frames );
     if ( result == 0 && frames > 0 ) stream_.latency[1] = frames;
+
+    doStopStream = callback( nullptr, stream_.userBuffer[1],
+                             samplesRead, streamTime, status, stream_.callbackInfo.userData );
+    if ( doStopStream == 2 ) {
+      abortStream();
+      return;
+    }
+    goto unlock;
   }
 
  tryOutput:
@@ -11362,10 +11371,30 @@ void RtApi :: setConvertInfo( StreamMode mode, unsigned int firstChannel )
   }
 }
 
-void RtApi :: convertBuffer( char *outBuffer, char *inBuffer, ConvertInfo &info, unsigned int bufferSize)
+void RtApi :: convertBuffer( char *outBuffer, char *inBuffer, ConvertInfo info, unsigned int bufferSize)
 {
     if (bufferSize==0){
         bufferSize = stream_.bufferSize;
+    }
+
+    if ( stream_.deviceInterleaved[stream_.mode] != stream_.userInterleaved ) {
+        info.inOffset.clear();
+        info.outOffset.clear();
+      if ( ( stream_.mode == OUTPUT && stream_.deviceInterleaved[stream_.mode] ) ||
+           ( stream_.mode == INPUT && stream_.userInterleaved ) ) {
+        for ( int k=0; k<info.channels; k++ ) {
+          info.inOffset.push_back( k * bufferSize );
+          info.outOffset.push_back( k );
+          info.inJump = 1;
+        }
+      }
+      else {
+        for ( int k=0; k<info.channels; k++ ) {
+          info.inOffset.push_back( k );
+          info.outOffset.push_back( k * bufferSize );
+          info.outJump = 1;
+        }
+      }
     }
   // This function does format conversion, input/output channel compensation, and
   // data interleaving/deinterleaving.  24-bit integers are assumed to occupy
