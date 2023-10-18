@@ -93,6 +93,9 @@ bool RtApiAlsa :: probeDeviceOpen( unsigned int deviceId, StreamMode mode, unsig
 
     snd_pcm_t *phandle;
     int openMode = SND_PCM_ASYNC;
+    if ( options && options->flags & RTAUDIO_ALSA_NONBLOCK ) {
+        openMode = SND_PCM_NONBLOCK;
+    }
     int result = snd_pcm_open( &phandle, name.c_str(), stream, openMode );
     if ( result < 0 ) {
         if ( mode == OUTPUT )
@@ -535,6 +538,167 @@ error:
     return FAILURE;
 }
 
+int RtApiAlsa::processInput()
+{
+    AlsaHandle *apiInfo = (AlsaHandle *) stream_.apiHandle;
+    int result;
+    char *buffer;
+    int channels;
+    snd_pcm_t **handle;
+    snd_pcm_sframes_t frames;
+    RtAudioFormat format;
+    handle = (snd_pcm_t **) apiInfo->handles;
+
+    // Setup parameters.
+    if ( stream_.doConvertBuffer[1] ) {
+        buffer = stream_.deviceBuffer;
+        channels = stream_.nDeviceChannels[1];
+        format = stream_.deviceFormat[1];
+    }
+    else {
+        buffer = stream_.userBuffer[1];
+        channels = stream_.nUserChannels[1];
+        format = stream_.userFormat;
+    }
+
+    // Read samples from device in interleaved/non-interleaved format.
+    int readSamples = 0;
+
+    while (readSamples < stream_.bufferSize){
+        if ( stream_.deviceInterleaved[1] )
+            result = snd_pcm_readi( handle[1], buffer + (channels * readSamples * formatBytes (format)), stream_.bufferSize - readSamples );
+        else {
+            void *bufs[channels];
+            size_t offset = stream_.bufferSize * formatBytes( format );
+            for ( int i=0; i<channels; i++ )
+                bufs[i] = (void *) (buffer + (i * offset));
+            result = snd_pcm_readn( handle[1], bufs, stream_.bufferSize );
+        }
+        if ( result <= 0) {
+            // Either an error or overrun occurred.
+            if ( result == -EPIPE ) {
+                snd_pcm_state_t state = snd_pcm_state( handle[1] );
+                if ( state == SND_PCM_STATE_XRUN ) {
+                    apiInfo->xrun[1] = true;
+                    result = snd_pcm_prepare( handle[1] );
+                    if ( result < 0 ) {
+                        errorStream_ << "RtApiAlsa::callbackEvent: error preparing device after overrun, " << snd_strerror( result ) << ".";
+                        errorText_ = errorStream_.str();
+                    }
+                }
+                else {
+                    errorStream_ << "RtApiAlsa::callbackEvent: error, current state is " << snd_pcm_state_name( state ) << ", " << snd_strerror( result ) << ".";
+                    errorText_ = errorStream_.str();
+                }
+            }else if (result == -EAGAIN){
+                uint64_t bufsize64 = stream_.bufferSize;
+                usleep(bufsize64 * (1000000 / 2) / stream_.sampleRate);
+                continue;
+            }else {
+                errorStream_ << "RtApiAlsa::callbackEvent: audio read error, " << snd_strerror( result ) << ".";
+                errorText_ = errorStream_.str();
+            }
+            error( RTAUDIO_WARNING );
+            return 0;
+        }
+        readSamples += result;
+    }
+
+    // Do byte swapping if necessary.
+    if ( stream_.doByteSwap[1] )
+        byteSwapBuffer( buffer, readSamples * channels, format );
+
+    // Do buffer conversion if necessary.
+    if ( stream_.doConvertBuffer[1] )
+        convertBuffer( stream_.userBuffer[1], stream_.deviceBuffer, stream_.convertInfo[1], readSamples);
+
+    // Check stream latency
+    result = snd_pcm_delay( handle[1], &frames );
+    if ( result == 0 && frames > 0 ) stream_.latency[1] = frames;
+    return readSamples;
+}
+
+bool RtApiAlsa::processOutput(int samples)
+{
+    AlsaHandle *apiInfo = (AlsaHandle *) stream_.apiHandle;
+    int result;
+    char *buffer;
+    int channels;
+    snd_pcm_t **handle;
+    snd_pcm_sframes_t frames;
+    RtAudioFormat format;
+    handle = (snd_pcm_t **) apiInfo->handles;
+    // Setup parameters and do buffer conversion if necessary.
+    if ( stream_.doConvertBuffer[0] ) {
+        buffer = stream_.deviceBuffer;
+        convertBuffer( buffer, stream_.userBuffer[0], stream_.convertInfo[0], samples);
+        channels = stream_.nDeviceChannels[0];
+        format = stream_.deviceFormat[0];
+    }
+    else {
+        buffer = stream_.userBuffer[0];
+        channels = stream_.nUserChannels[0];
+        format = stream_.userFormat;
+    }
+
+    // Do byte swapping if necessary.
+    if ( stream_.doByteSwap[0] )
+        byteSwapBuffer(buffer, samples * channels, format);
+
+    // Write samples to device in interleaved/non-interleaved format.
+    int samplesPlayed = 0;
+
+    while (samplesPlayed < samples){
+        if ( stream_.deviceInterleaved[0] )
+            result = snd_pcm_writei( handle[0], buffer + (samplesPlayed * formatBytes(format) * channels), samples - samplesPlayed );
+        else {
+            void *bufs[channels];
+            size_t offset = stream_.bufferSize * formatBytes( format );
+            for ( int i=0; i<channels; i++ )
+                bufs[i] = (void *) (buffer + (i * offset));
+            result = snd_pcm_writen( handle[0], bufs, samples );
+        }
+        if ( result <= 0 ) {
+            // Either an error or underrun occurred.
+            if ( result == -EPIPE ) {
+                snd_pcm_state_t state = snd_pcm_state( handle[0] );
+                if ( state == SND_PCM_STATE_XRUN ) {
+                    apiInfo->xrun[0] = true;
+                    result = snd_pcm_prepare( handle[0] );
+                    if ( result < 0 ) {
+                        errorStream_ << "RtApiAlsa::callbackEvent: error preparing device after underrun, " << snd_strerror( result ) << ".";
+                        errorText_ = errorStream_.str();
+                    }
+                    else
+                        errorText_ =  "RtApiAlsa::callbackEvent: audio write error, underrun.";
+                }
+                else {
+                    errorStream_ << "RtApiAlsa::callbackEvent: error, current state is " << snd_pcm_state_name( state ) << ", " << snd_strerror( result ) << ".";
+                    errorText_ = errorStream_.str();
+                }
+            }else if (result == -EAGAIN){
+                continue;
+            }
+            else {
+                errorStream_ << "RtApiAlsa::callbackEvent: audio write error, " << snd_strerror( result ) << ".";
+                errorText_ = errorStream_.str();
+                stream_.state = STREAM_ERROR;
+            }
+            error( RTAUDIO_WARNING );
+            return false;
+        }
+        samplesPlayed += result;
+        if (result != samples){
+            result = result;
+        }
+    }
+
+    // Check stream latency
+    result = snd_pcm_delay( handle[0], &frames );
+    if ( result == 0 && frames > 0 ) stream_.latency[0] = frames;
+    return true;
+}
+
 void RtApiAlsa :: closeStream()
 {
     if ( stream_.state == STREAM_CLOSED ) {
@@ -753,6 +917,7 @@ void RtApiAlsa :: callbackEvent()
     }
 
     int doStopStream = 0;
+    int inputSamples = 0;
     RtAudioCallback callback = (RtAudioCallback) stream_.callbackInfo.callback;
     double streamTime = getStreamTime();
     RtAudioStreamStatus status = 0;
@@ -779,133 +944,14 @@ void RtApiAlsa :: callbackEvent()
     handle = (snd_pcm_t **) apiInfo->handles;
 
     if ( stream_.mode == INPUT || stream_.mode == DUPLEX ) {
-
-        // Setup parameters.
-        if ( stream_.doConvertBuffer[1] ) {
-            buffer = stream_.deviceBuffer;
-            channels = stream_.nDeviceChannels[1];
-            format = stream_.deviceFormat[1];
-        }
-        else {
-            buffer = stream_.userBuffer[1];
-            channels = stream_.nUserChannels[1];
-            format = stream_.userFormat;
-        }
-
-        // Read samples from device in interleaved/non-interleaved format.
-        if ( stream_.deviceInterleaved[1] )
-            result = snd_pcm_readi( handle[1], buffer, stream_.bufferSize );
-        else {
-            void *bufs[channels];
-            size_t offset = stream_.bufferSize * formatBytes( format );
-            for ( int i=0; i<channels; i++ )
-                bufs[i] = (void *) (buffer + (i * offset));
-            result = snd_pcm_readn( handle[1], bufs, stream_.bufferSize );
-        }
-
-        if ( result < (int) stream_.bufferSize ) {
-            // Either an error or overrun occurred.
-            if ( result == -EPIPE ) {
-                snd_pcm_state_t state = snd_pcm_state( handle[1] );
-                if ( state == SND_PCM_STATE_XRUN ) {
-                    apiInfo->xrun[1] = true;
-                    result = snd_pcm_prepare( handle[1] );
-                    if ( result < 0 ) {
-                        errorStream_ << "RtApiAlsa::callbackEvent: error preparing device after overrun, " << snd_strerror( result ) << ".";
-                        errorText_ = errorStream_.str();
-                    }
-                }
-                else {
-                    errorStream_ << "RtApiAlsa::callbackEvent: error, current state is " << snd_pcm_state_name( state ) << ", " << snd_strerror( result ) << ".";
-                    errorText_ = errorStream_.str();
-                }
-            }
-            else {
-                errorStream_ << "RtApiAlsa::callbackEvent: audio read error, " << snd_strerror( result ) << ".";
-                errorText_ = errorStream_.str();
-            }
-            error( RTAUDIO_WARNING );
-            goto tryOutput;
-        }
-
-        // Do byte swapping if necessary.
-        if ( stream_.doByteSwap[1] )
-            byteSwapBuffer( buffer, stream_.bufferSize * channels, format );
-
-        // Do buffer conversion if necessary.
-        if ( stream_.doConvertBuffer[1] )
-            convertBuffer( stream_.userBuffer[1], stream_.deviceBuffer, stream_.convertInfo[1], stream_.bufferSize);
-
-        // Check stream latency
-        result = snd_pcm_delay( handle[1], &frames );
-        if ( result == 0 && frames > 0 ) stream_.latency[1] = frames;
+        inputSamples = processInput();
     }
 
-tryOutput:
-    doStopStream = callback( stream_.userBuffer[0], stream_.userBuffer[1],
-            stream_.bufferSize, streamTime, status, stream_.callbackInfo.userData );
+    callback( stream_.userBuffer[0], inputSamples > 0 ? stream_.userBuffer[1] : nullptr,
+            inputSamples > 0 ? inputSamples : stream_.bufferSize, streamTime, status, stream_.callbackInfo.userData );
 
     if ( stream_.mode == OUTPUT || stream_.mode == DUPLEX ) {
-
-        // Setup parameters and do buffer conversion if necessary.
-        if ( stream_.doConvertBuffer[0] ) {
-            buffer = stream_.deviceBuffer;
-            convertBuffer( buffer, stream_.userBuffer[0], stream_.convertInfo[0], stream_.bufferSize);
-            channels = stream_.nDeviceChannels[0];
-            format = stream_.deviceFormat[0];
-        }
-        else {
-            buffer = stream_.userBuffer[0];
-            channels = stream_.nUserChannels[0];
-            format = stream_.userFormat;
-        }
-
-        // Do byte swapping if necessary.
-        if ( stream_.doByteSwap[0] )
-            byteSwapBuffer(buffer, stream_.bufferSize * channels, format);
-
-        // Write samples to device in interleaved/non-interleaved format.
-        if ( stream_.deviceInterleaved[0] )
-            result = snd_pcm_writei( handle[0], buffer, stream_.bufferSize );
-        else {
-            void *bufs[channels];
-            size_t offset = stream_.bufferSize * formatBytes( format );
-            for ( int i=0; i<channels; i++ )
-                bufs[i] = (void *) (buffer + (i * offset));
-            result = snd_pcm_writen( handle[0], bufs, stream_.bufferSize );
-        }
-
-        if ( result < (int) stream_.bufferSize ) {
-            // Either an error or underrun occurred.
-            if ( result == -EPIPE ) {
-                snd_pcm_state_t state = snd_pcm_state( handle[0] );
-                if ( state == SND_PCM_STATE_XRUN ) {
-                    apiInfo->xrun[0] = true;
-                    result = snd_pcm_prepare( handle[0] );
-                    if ( result < 0 ) {
-                        errorStream_ << "RtApiAlsa::callbackEvent: error preparing device after underrun, " << snd_strerror( result ) << ".";
-                        errorText_ = errorStream_.str();
-                    }
-                    else
-                        errorText_ =  "RtApiAlsa::callbackEvent: audio write error, underrun.";
-                }
-                else {
-                    errorStream_ << "RtApiAlsa::callbackEvent: error, current state is " << snd_pcm_state_name( state ) << ", " << snd_strerror( result ) << ".";
-                    errorText_ = errorStream_.str();
-                }
-            }
-            else {
-                errorStream_ << "RtApiAlsa::callbackEvent: audio write error, " << snd_strerror( result ) << ".";
-                errorText_ = errorStream_.str();
-                stream_.state = STREAM_ERROR;
-            }
-            error( RTAUDIO_WARNING );
-            goto unlock;
-        }
-
-        // Check stream latency
-        result = snd_pcm_delay( handle[0], &frames );
-        if ( result == 0 && frames > 0 ) stream_.latency[0] = frames;
+       processOutput(inputSamples > 0 ? inputSamples : stream_.bufferSize);
     }
 
 unlock:

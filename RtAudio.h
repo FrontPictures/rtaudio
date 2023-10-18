@@ -163,6 +163,7 @@ static const RtAudioStreamFlags RTAUDIO_HOG_DEVICE = 0x4;        // Attempt grab
 static const RtAudioStreamFlags RTAUDIO_SCHEDULE_REALTIME = 0x8; // Try to select realtime scheduling for callback thread.
 static const RtAudioStreamFlags RTAUDIO_ALSA_USE_DEFAULT = 0x10; // Use the "default" PCM device (ALSA only).
 static const RtAudioStreamFlags RTAUDIO_JACK_DONT_CONNECT = 0x20; // Do not automatically connect ports (JACK only).
+static const RtAudioStreamFlags RTAUDIO_ALSA_NONBLOCK = 0x40; // Do not automatically connect ports (JACK only).
 
 /*! \typedef typedef unsigned long RtAudioStreamStatus;
     \brief RtAudio stream status (over- or underflow) flags.
@@ -865,7 +866,7 @@ protected:
     Protected method used to perform format, channel number, and/or interleaving
     conversions between the user and device buffers.
   */
-  void convertBuffer( char *outBuffer, char *inBuffer, ConvertInfo &info, unsigned int samples);
+  void convertBuffer( char *outBuffer, char *inBuffer, ConvertInfo info, unsigned int samples);
 
   //! Protected common method used to perform byte-swapping on buffers.
   void byteSwapBuffer( char *buffer, unsigned int samples, RtAudioFormat format );

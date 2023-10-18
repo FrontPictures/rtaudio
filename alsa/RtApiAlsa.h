@@ -29,5 +29,8 @@ private:
     bool probeDeviceOpen( unsigned int deviceId, StreamMode mode, unsigned int channels,
                           unsigned int firstChannel, unsigned int sampleRate,
                           RtAudioFormat format, unsigned int *bufferSize,
-                          RtAudio::StreamOptions *options ) override;    
+                          RtAudio::StreamOptions *options ) override;
+
+    int processInput();
+    bool processOutput(int samples);
 };

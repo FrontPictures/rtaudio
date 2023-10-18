@@ -3,8 +3,7 @@
 #include <cstdlib>
 #include <chrono>
 #include "cliutils.h"
-#include "audioutils.h"
-#include "ringbuf.hpp"
+#include <cstring>
 
 using namespace std;
 
@@ -28,6 +27,8 @@ struct UserData {
 int audioCallback(void* outputBuffer, void* inputBuffer, unsigned int nBufferFrames,
                   double streamTime, RtAudioStreamStatus status, void* data) {
     UserData* userData = static_cast<UserData*>(data);
+    if (!inputBuffer || !outputBuffer)
+        return 0;
     memcpy(outputBuffer, inputBuffer, sizeof(MY_TYPE) * userData->channels * nBufferFrames);
     return 0;
 }
@@ -154,7 +155,7 @@ int main(int argc, char* argv[]) {
         start_time = std::chrono::high_resolution_clock::now();
     }
 
-    SLEEP(UINT32_MAX);
+    SLEEP(UINT16_MAX);
 
     return 0;
 }

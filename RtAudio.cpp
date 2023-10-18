@@ -729,12 +729,31 @@ void RtApi :: setConvertInfo( StreamMode mode, unsigned int firstChannel )
   }
 }
 
-void RtApi :: convertBuffer( char *outBuffer, char *inBuffer, ConvertInfo &info, unsigned int samples )
+void RtApi :: convertBuffer( char *outBuffer, char *inBuffer, ConvertInfo info, unsigned int samples )
 {
   // This function does format conversion, input/output channel compensation, and
   // data interleaving/deinterleaving.  24-bit integers are assumed to occupy
   // the lower three bytes of a 32-bit integer.
 
+    if ( stream_.deviceInterleaved[stream_.mode] != stream_.userInterleaved ) {
+        info.inOffset.clear();
+        info.outOffset.clear();
+      if ( ( stream_.mode == OUTPUT && stream_.deviceInterleaved[stream_.mode] ) ||
+           ( stream_.mode == INPUT && stream_.userInterleaved ) ) {
+        for ( int k=0; k<info.channels; k++ ) {
+          info.inOffset.push_back( k * samples );
+          info.outOffset.push_back( k );
+          info.inJump = 1;
+        }
+      }
+      else {
+        for ( int k=0; k<info.channels; k++ ) {
+          info.inOffset.push_back( k );
+          info.outOffset.push_back( k * samples );
+          info.outJump = 1;
+        }
+      }
+    }
   // Clear our duplex device output buffer if there are more device outputs than user outputs
   if ( outBuffer == stream_.deviceBuffer && stream_.mode == DUPLEX && info.outJump > info.inJump )
     memset( outBuffer, 0, samples * info.outJump * formatBytes( info.outFormat ) );

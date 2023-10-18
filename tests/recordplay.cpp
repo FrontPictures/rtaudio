@@ -114,6 +114,7 @@ bool capture_audio(AudioParamsCapture params) {
         adc.closeStream();
         start_time = std::chrono::high_resolution_clock::now();
     }
+    return true;
 }
 
 
@@ -138,11 +139,12 @@ bool playback_audio(AudioParamsCapture params) {
         return false;
     }
     adc.startStream();
-    std::cout << "\Playback... (buffer size = " << params.bufferFrames << ").\n";
+    std::cout << "\nPlayback... (buffer size = " << params.bufferFrames << ").\n";
     while (adc.isStreamRunning()) {
         SLEEP(10);
     }
     adc.closeStream();
+    return true;
 }
 
 int main(int argc, char* argv[]) {
@@ -274,6 +276,6 @@ int main(int argc, char* argv[]) {
     paramsPass.busID = selectedDeviceIn.busID;
     std::thread capture_async = std::thread(&capture_audio, paramsPass);
 
-    SLEEP(UINT32_MAX);
+    SLEEP(UINT16_MAX);
     return 0;
 }
