@@ -4,6 +4,24 @@
 #include "RtApiAlsa.h"
 #include "utils.h"
 #include <optional>
+#include "OnExit.hpp"
+
+// A structure to hold various information related to the ALSA API
+// implementation.
+struct AlsaHandle {
+    snd_pcm_t *handles[2];
+    bool synchronized;
+    bool xrun[2];
+    pthread_cond_t runnable_cv;
+    bool runnable;
+
+    AlsaHandle()
+#if _cplusplus >= 201103L
+        :handles{nullptr, nullptr}, synchronized(false), runnable(false) { xrun[0] = false; xrun[1] = false; }
+#else
+        : synchronized(false), runnable(false) { handles[0] = NULL; handles[1] = NULL; xrun[0] = false; xrun[1] = false; }
+#endif
+};
 
 namespace{
 static void *alsaCallbackHandler( void *ptr )
@@ -28,22 +46,44 @@ static void *alsaCallbackHandler( void *ptr )
     pthread_exit( NULL );
 }
 
-// A structure to hold various information related to the ALSA API
-// implementation.
-struct AlsaHandle {
-    snd_pcm_t *handles[2];
-    bool synchronized;
-    bool xrun[2];
-    pthread_cond_t runnable_cv;
-    bool runnable;
+constexpr snd_pcm_format_t getAlsaFormat(RtAudioFormat format){
+    switch (format) {
+    case RTAUDIO_SINT8:
+        return SND_PCM_FORMAT_S8;
+    case RTAUDIO_SINT16:
+        return SND_PCM_FORMAT_S16;
+    case RTAUDIO_SINT24:
+        return SND_PCM_FORMAT_S24;
+    case RTAUDIO_SINT32:
+        return SND_PCM_FORMAT_S32;
+    case RTAUDIO_FLOAT32:
+        return SND_PCM_FORMAT_FLOAT;
+    case RTAUDIO_FLOAT64:
+        return SND_PCM_FORMAT_FLOAT64;
+    default:
+        return SND_PCM_FORMAT_UNKNOWN;
+    }
+}
 
-    AlsaHandle()
-#if _cplusplus >= 201103L
-        :handles{nullptr, nullptr}, synchronized(false), runnable(false) { xrun[0] = false; xrun[1] = false; }
-#else
-        : synchronized(false), runnable(false) { handles[0] = NULL; handles[1] = NULL; xrun[0] = false; xrun[1] = false; }
-#endif
-};
+constexpr RtAudioFormat getRtFormat(snd_pcm_format_t format){
+    switch (format) {
+    case SND_PCM_FORMAT_S8:
+        return RTAUDIO_SINT8;
+    case SND_PCM_FORMAT_S16:
+        return RTAUDIO_SINT16;
+    case SND_PCM_FORMAT_S24:
+    case SND_PCM_FORMAT_S24_3LE:
+        return RTAUDIO_SINT24;
+    case SND_PCM_FORMAT_S32:
+        return RTAUDIO_SINT32;
+    case SND_PCM_FORMAT_FLOAT:
+        return RTAUDIO_FLOAT32;
+    case SND_PCM_FORMAT_FLOAT64:
+        return RTAUDIO_FLOAT64;
+    default:
+        return RTAUDIO_SINT8;
+    }
+}
 }
 
 RtApiAlsa :: RtApiAlsa()
@@ -85,13 +125,19 @@ bool RtApiAlsa :: probeDeviceOpen( unsigned int deviceId, StreamMode mode, unsig
         return FAILURE;
     }
 
-    snd_pcm_stream_t stream;
+    snd_pcm_stream_t stream = SND_PCM_STREAM_PLAYBACK;
     if ( mode == OUTPUT )
         stream = SND_PCM_STREAM_PLAYBACK;
     else
         stream = SND_PCM_STREAM_CAPTURE;
 
-    snd_pcm_t *phandle;
+    snd_pcm_t *phandle = nullptr;
+    OnExit onExit([&](){
+        if (phandle){
+            snd_pcm_close( phandle );
+            phandle = nullptr;
+        }
+    });
     int openMode = SND_PCM_ASYNC;
     if ( options && options->flags & RTAUDIO_ALSA_NONBLOCK ) {
         openMode = SND_PCM_NONBLOCK;
@@ -107,11 +153,10 @@ bool RtApiAlsa :: probeDeviceOpen( unsigned int deviceId, StreamMode mode, unsig
     }
 
     // Fill the parameter structure.
-    snd_pcm_hw_params_t *hw_params;
+    snd_pcm_hw_params_t *hw_params = nullptr;
     snd_pcm_hw_params_alloca( &hw_params );
     result = snd_pcm_hw_params_any( phandle, hw_params );
     if ( result < 0 ) {
-        snd_pcm_close( phandle );
         errorStream_ << "RtApiAlsa::probeDeviceOpen: error getting pcm device (" << name << ") parameters, " << snd_strerror( result ) << ".";
         errorText_ = errorStream_.str();
         return FAILURE;
@@ -122,211 +167,54 @@ bool RtApiAlsa :: probeDeviceOpen( unsigned int deviceId, StreamMode mode, unsig
     snd_pcm_hw_params_dump( hw_params, out );
 #endif
 
-    // Set access ... check user preference.
-    if ( options && options->flags & RTAUDIO_NONINTERLEAVED ) {
-        stream_.userInterleaved = false;
-        result = snd_pcm_hw_params_set_access( phandle, hw_params, SND_PCM_ACCESS_RW_NONINTERLEAVED );
-        if ( result < 0 ) {
-            result = snd_pcm_hw_params_set_access( phandle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED );
-            stream_.deviceInterleaved[mode] =  true;
-        }
-        else
-            stream_.deviceInterleaved[mode] = false;
-    }
-    else {
-        stream_.userInterleaved = true;
-        result = snd_pcm_hw_params_set_access( phandle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED );
-        if ( result < 0 ) {
-            result = snd_pcm_hw_params_set_access( phandle, hw_params, SND_PCM_ACCESS_RW_NONINTERLEAVED );
-            stream_.deviceInterleaved[mode] =  false;
-        }
-        else
-            stream_.deviceInterleaved[mode] =  true;
-    }
-
+    result = setAccessMode(options, hw_params, phandle, mode);
     if ( result < 0 ) {
-        snd_pcm_close( phandle );
         errorStream_ << "RtApiAlsa::probeDeviceOpen: error setting pcm device (" << name << ") access, " << snd_strerror( result ) << ".";
         errorText_ = errorStream_.str();
         return FAILURE;
     }
 
-    // Determine how to set the device format.
-    stream_.userFormat = format;
-    snd_pcm_format_t deviceFormat = SND_PCM_FORMAT_UNKNOWN;
-
-    if ( format == RTAUDIO_SINT8 )
-        deviceFormat = SND_PCM_FORMAT_S8;
-    else if ( format == RTAUDIO_SINT16 )
-        deviceFormat = SND_PCM_FORMAT_S16;
-    else if ( format == RTAUDIO_SINT24 )
-        deviceFormat = SND_PCM_FORMAT_S24;
-    else if ( format == RTAUDIO_SINT32 )
-        deviceFormat = SND_PCM_FORMAT_S32;
-    else if ( format == RTAUDIO_FLOAT32 )
-        deviceFormat = SND_PCM_FORMAT_FLOAT;
-    else if ( format == RTAUDIO_FLOAT64 )
-        deviceFormat = SND_PCM_FORMAT_FLOAT64;
-
-    if ( snd_pcm_hw_params_test_format(phandle, hw_params, deviceFormat) == 0) {
-        stream_.deviceFormat[mode] = format;
-        goto setFormat;
+    auto deviceFormat = setFormat(hw_params, phandle, mode, format);
+    if (deviceFormat < 0){
+        errorStream_ << "RtApiAlsa::probeDeviceOpen: pcm device (" << name << ") data format not supported by RtAudio.";
+        errorText_ = errorStream_.str();
+        return FAILURE;
     }
 
-    // The user requested format is not natively supported by the device.
-    deviceFormat = SND_PCM_FORMAT_FLOAT64;
-    if ( snd_pcm_hw_params_test_format( phandle, hw_params, deviceFormat ) == 0 ) {
-        stream_.deviceFormat[mode] = RTAUDIO_FLOAT64;
-        goto setFormat;
-    }
-
-    deviceFormat = SND_PCM_FORMAT_FLOAT;
-    if ( snd_pcm_hw_params_test_format(phandle, hw_params, deviceFormat ) == 0 ) {
-        stream_.deviceFormat[mode] = RTAUDIO_FLOAT32;
-        goto setFormat;
-    }
-
-    deviceFormat = SND_PCM_FORMAT_S32;
-    if ( snd_pcm_hw_params_test_format(phandle, hw_params, deviceFormat ) == 0 ) {
-        stream_.deviceFormat[mode] = RTAUDIO_SINT32;
-        goto setFormat;
-    }
-
-    deviceFormat = SND_PCM_FORMAT_S24;
-    if ( snd_pcm_hw_params_test_format(phandle, hw_params, deviceFormat ) == 0 ) {
-        stream_.deviceFormat[mode] = RTAUDIO_SINT24;
-        goto setFormat;
-    }
-
-    deviceFormat = SND_PCM_FORMAT_S16;
-    if ( snd_pcm_hw_params_test_format(phandle, hw_params, deviceFormat ) == 0 ) {
-        stream_.deviceFormat[mode] = RTAUDIO_SINT16;
-        goto setFormat;
-    }
-
-    deviceFormat = SND_PCM_FORMAT_S8;
-    if ( snd_pcm_hw_params_test_format(phandle, hw_params, deviceFormat ) == 0 ) {
-        stream_.deviceFormat[mode] = RTAUDIO_SINT8;
-        goto setFormat;
-    }
-
-    deviceFormat = SND_PCM_FORMAT_S24_3LE;
-    if ( snd_pcm_hw_params_test_format(phandle, hw_params, deviceFormat ) == 0 ) {
-        stream_.deviceFormat[mode] = RTAUDIO_SINT24;
-        goto setFormat;
-    }
-
-    // If we get here, no supported format was found.
-    snd_pcm_close( phandle );
-    errorStream_ << "RtApiAlsa::probeDeviceOpen: pcm device (" << name << ") data format not supported by RtAudio.";
-    errorText_ = errorStream_.str();
-    return FAILURE;
-
-setFormat:
     result = snd_pcm_hw_params_set_format( phandle, hw_params, deviceFormat );
     if ( result < 0 ) {
-        snd_pcm_close( phandle );
         errorStream_ << "RtApiAlsa::probeDeviceOpen: error setting pcm device (" << name << ") data format, " << snd_strerror( result ) << ".";
         errorText_ = errorStream_.str();
         return FAILURE;
     }
 
-    // Determine whether byte-swaping is necessary.
-    stream_.doByteSwap[mode] = false;
-    if ( deviceFormat != SND_PCM_FORMAT_S8 ) {
-        result = snd_pcm_format_cpu_endian( deviceFormat );
-        if ( result == 0 )
-            stream_.doByteSwap[mode] = true;
-        else if (result < 0) {
-            snd_pcm_close( phandle );
-            errorStream_ << "RtApiAlsa::probeDeviceOpen: error getting pcm device (" << name << ") endian-ness, " << snd_strerror( result ) << ".";
-            errorText_ = errorStream_.str();
-            return FAILURE;
-        }
+    result = setupByteswap(mode, deviceFormat);
+    if (result < 0) {
+        errorStream_ << "RtApiAlsa::probeDeviceOpen: error getting pcm device (" << name << ") endian-ness, " << snd_strerror( result ) << ".";
+        errorText_ = errorStream_.str();
+        return FAILURE;
     }
 
     // Set the sample rate.
     result = snd_pcm_hw_params_set_rate_near( phandle, hw_params, (unsigned int*) &sampleRate, 0 );
     if ( result < 0 ) {
-        snd_pcm_close( phandle );
         errorStream_ << "RtApiAlsa::probeDeviceOpen: error setting sample rate on device (" << name << "), " << snd_strerror( result ) << ".";
         errorText_ = errorStream_.str();
         return FAILURE;
     }
 
-    // Determine the number of channels for this device.  We support a possible
-    // minimum device channel number > than the value requested by the user.
-    stream_.nUserChannels[mode] = channels;
-    unsigned int value;
-    result = snd_pcm_hw_params_get_channels_max( hw_params, &value );
-    unsigned int deviceChannels = value;
-    if ( result < 0 || deviceChannels < channels + firstChannel ) {
-        snd_pcm_close( phandle );
-        errorStream_ << "RtApiAlsa::probeDeviceOpen: requested channel parameters not supported by device (" << name << "), " << snd_strerror( result ) << ".";
-        errorText_ = errorStream_.str();
+    if (setupChannels(mode, channels, firstChannel, hw_params, phandle) != SUCCESS){
         return FAILURE;
     }
 
-    result = snd_pcm_hw_params_get_channels_min( hw_params, &value );
-    if ( result < 0 ) {
-        snd_pcm_close( phandle );
-        errorStream_ << "RtApiAlsa::probeDeviceOpen: error getting minimum channels for device (" << name << "), " << snd_strerror( result ) << ".";
-        errorText_ = errorStream_.str();
+    int periods = 1;
+    if (setupBufferPeriod(options, mode, bufferSize, hw_params, phandle, periods) != SUCCESS){
         return FAILURE;
     }
-    deviceChannels = value;
-    if ( deviceChannels < channels + firstChannel ) deviceChannels = channels + firstChannel;
-    stream_.nDeviceChannels[mode] = deviceChannels;
-
-    // Set the device channels.
-    result = snd_pcm_hw_params_set_channels( phandle, hw_params, deviceChannels );
-    if ( result < 0 ) {
-        snd_pcm_close( phandle );
-        errorStream_ << "RtApiAlsa::probeDeviceOpen: error setting channels for device (" << name << "), " << snd_strerror( result ) << ".";
-        errorText_ = errorStream_.str();
-        return FAILURE;
-    }
-
-    // Set the buffer (or period) size.
-    int dir = 0;
-    snd_pcm_uframes_t periodSize = *bufferSize;
-    result = snd_pcm_hw_params_set_period_size_near( phandle, hw_params, &periodSize, &dir );
-    if ( result < 0 ) {
-        snd_pcm_close( phandle );
-        errorStream_ << "RtApiAlsa::probeDeviceOpen: error setting period size for device (" << name << "), " << snd_strerror( result ) << ".";
-        errorText_ = errorStream_.str();
-        return FAILURE;
-    }
-    *bufferSize = periodSize;
-
-    // Set the buffer number, which in ALSA is referred to as the "period".
-    unsigned int periods = 0;
-    if ( options && options->flags & RTAUDIO_MINIMIZE_LATENCY ) periods = 2;
-    if ( options && options->numberOfBuffers > 0 ) periods = options->numberOfBuffers;
-    if ( periods < 2 ) periods = 4; // a fairly safe default value
-    result = snd_pcm_hw_params_set_periods_near( phandle, hw_params, &periods, &dir );
-    if ( result < 0 ) {
-        snd_pcm_close( phandle );
-        errorStream_ << "RtApiAlsa::probeDeviceOpen: error setting periods for device (" << name << "), " << snd_strerror( result ) << ".";
-        errorText_ = errorStream_.str();
-        return FAILURE;
-    }
-
-    // If attempting to setup a duplex stream, the bufferSize parameter
-    // MUST be the same in both directions!
-    if ( stream_.mode == OUTPUT && mode == INPUT && *bufferSize != stream_.bufferSize ) {
-        snd_pcm_close( phandle );
-        errorStream_ << "RtApiAlsa::probeDeviceOpen: system error setting buffer size for duplex stream on device (" << name << ").";
-        errorText_ = errorStream_.str();
-        return FAILURE;
-    }
-
-    stream_.bufferSize = *bufferSize;
 
     // Install the hardware configuration
     result = snd_pcm_hw_params( phandle, hw_params );
     if ( result < 0 ) {
-        snd_pcm_close( phandle );
         errorStream_ << "RtApiAlsa::probeDeviceOpen: error installing hardware configuration on device (" << name << "), " << snd_strerror( result ) << ".";
         errorText_ = errorStream_.str();
         return FAILURE;
@@ -337,102 +225,57 @@ setFormat:
     snd_pcm_hw_params_dump( hw_params, out );
 #endif
 
-    // Set the software configuration to fill buffers with zeros and prevent device stopping on xruns.
-    snd_pcm_sw_params_t *sw_params = NULL;
-    snd_pcm_sw_params_alloca( &sw_params );
-    snd_pcm_sw_params_current( phandle, sw_params );
-    snd_pcm_sw_params_set_start_threshold( phandle, sw_params, *bufferSize );
-    snd_pcm_sw_params_set_stop_threshold( phandle, sw_params, ULONG_MAX );
-    snd_pcm_sw_params_set_silence_threshold( phandle, sw_params, 0 );
-
-    // The following two settings were suggested by Theo Veenker
-    //snd_pcm_sw_params_set_avail_min( phandle, sw_params, *bufferSize );
-    //snd_pcm_sw_params_set_xfer_align( phandle, sw_params, 1 );
-
-    // here are two options for a fix
-    //snd_pcm_sw_params_set_silence_size( phandle, sw_params, ULONG_MAX );
-    snd_pcm_uframes_t val;
-    snd_pcm_sw_params_get_boundary( sw_params, &val );
-    snd_pcm_sw_params_set_silence_size( phandle, sw_params, val );
-
-    result = snd_pcm_sw_params( phandle, sw_params );
+#if defined(__RTAUDIO_DEBUG__)
+    result = setSwParams(phandle, *bufferSize, out);
+#else
+    result = setSwParams(phandle, *bufferSize, nullptr);
+#endif
     if ( result < 0 ) {
-        snd_pcm_close( phandle );
         errorStream_ << "RtApiAlsa::probeDeviceOpen: error installing software configuration on device (" << name << "), " << snd_strerror( result ) << ".";
         errorText_ = errorStream_.str();
         return FAILURE;
     }
 
-#if defined(__RTAUDIO_DEBUG__)
-    fprintf(stderr, "\nRtApiAlsa: dump software params after installation:\n\n");
-    snd_pcm_sw_params_dump( sw_params, out );
-#endif
-
-    // Set flags for buffer conversion
-    stream_.doConvertBuffer[mode] = false;
-    if ( stream_.userFormat != stream_.deviceFormat[mode] )
-        stream_.doConvertBuffer[mode] = true;
-    if ( stream_.nUserChannels[mode] < stream_.nDeviceChannels[mode] )
-        stream_.doConvertBuffer[mode] = true;
-    if ( stream_.userInterleaved != stream_.deviceInterleaved[mode] &&
-         stream_.nUserChannels[mode] > 1 )
-        stream_.doConvertBuffer[mode] = true;
+    setupBufferConversion(mode);
 
     // Allocate the ApiHandle if necessary and then save.
     AlsaHandle *apiInfo = 0;
-    if ( stream_.apiHandle == 0 ) {
-        try {
-            apiInfo = (AlsaHandle *) new AlsaHandle;
-        }
-        catch ( std::bad_alloc& ) {
-            errorText_ = "RtApiAlsa::probeDeviceOpen: error allocating AlsaHandle memory.";
-            goto error;
-        }
 
-        if ( pthread_cond_init( &apiInfo->runnable_cv, NULL ) ) {
-            errorText_ = "RtApiAlsa::probeDeviceOpen: error initializing pthread condition variable.";
-            goto error;
-        }
+    apiInfo = getAlsaHandle();
+    if (!apiInfo){
+        return FAILURE;
+    }
 
-        stream_.apiHandle = (void *) apiInfo;
-        apiInfo->handles[0] = 0;
-        apiInfo->handles[1] = 0;
-    }
-    else {
-        apiInfo = (AlsaHandle *) stream_.apiHandle;
-    }
     apiInfo->handles[mode] = phandle;
     phandle = 0;
 
-    // Allocate necessary internal buffers.
-    unsigned long bufferBytes;
-    bufferBytes = stream_.nUserChannels[mode] * *bufferSize * formatBytes( stream_.userFormat );
-    stream_.userBuffer[mode] = (char *) calloc( bufferBytes, 1 );
-    if ( stream_.userBuffer[mode] == NULL ) {
-        errorText_ = "RtApiAlsa::probeDeviceOpen: error allocating user buffer memory.";
-        goto error;
-    }
-
-    if ( stream_.doConvertBuffer[mode] ) {
-
-        bool makeBuffer = true;
-        bufferBytes = stream_.nDeviceChannels[mode] * formatBytes( stream_.deviceFormat[mode] );
-        if ( mode == INPUT ) {
-            if ( stream_.mode == OUTPUT && stream_.deviceBuffer ) {
-                unsigned long bytesOut = stream_.nDeviceChannels[0] * formatBytes( stream_.deviceFormat[0] );
-                if ( bufferBytes <= bytesOut ) makeBuffer = false;
+    auto onExit2 = OnExit([&](){
+        if ( apiInfo ) {
+            pthread_cond_destroy( &apiInfo->runnable_cv );
+            if ( apiInfo->handles[0] ) snd_pcm_close( apiInfo->handles[0] );
+            if ( apiInfo->handles[1] ) snd_pcm_close( apiInfo->handles[1] );
+            delete apiInfo;
+            stream_.apiHandle = 0;
+        }
+        if ( phandle) snd_pcm_close( phandle );
+        phandle = nullptr;
+        for ( int i=0; i<2; i++ ) {
+            if ( stream_.userBuffer[i] ) {
+                free( stream_.userBuffer[i] );
+                stream_.userBuffer[i] = 0;
             }
         }
 
-        if ( makeBuffer ) {
-            bufferBytes *= *bufferSize;
-            if ( stream_.deviceBuffer ) free( stream_.deviceBuffer );
-            stream_.deviceBuffer = (char *) calloc( bufferBytes, 1 );
-            if ( stream_.deviceBuffer == NULL ) {
-                errorText_ = "RtApiAlsa::probeDeviceOpen: error allocating device buffer memory.";
-                goto error;
-            }
+        if ( stream_.deviceBuffer ) {
+            free( stream_.deviceBuffer );
+            stream_.deviceBuffer = 0;
         }
+
+        stream_.state = STREAM_CLOSED;
+    });
+
+    if (allocateBuffers(mode, *bufferSize) != SUCCESS){
+        return FAILURE;
     }
 
     stream_.sampleRate = sampleRate;
@@ -458,84 +301,302 @@ setFormat:
     }
     else {
         stream_.mode = mode;
+        setupThread(options);
+    }
 
-        // Setup callback thread.
-        stream_.callbackInfo.object = (void *) this;
+    onExit.invalidate();
+    onExit2.invalidate();
+    return SUCCESS;
+}
 
-        // Set the thread attributes for joinable and realtime scheduling
-        // priority (optional).  The higher priority will only take affect
-        // if the program is run as root or suid. Note, under Linux
-        // processes with CAP_SYS_NICE privilege, a user can change
-        // scheduling policy and priority (thus need not be root). See
-        // POSIX "capabilities".
-        pthread_attr_t attr;
-        pthread_attr_init( &attr );
-        pthread_attr_setdetachstate( &attr, PTHREAD_CREATE_JOINABLE );
+bool RtApiAlsa::setupThread(RtAudio::StreamOptions* options)
+{
+    int result = 0;
+    // Setup callback thread.
+    stream_.callbackInfo.object = (void *) this;
+
+    // Set the thread attributes for joinable and realtime scheduling
+    // priority (optional).  The higher priority will only take affect
+    // if the program is run as root or suid. Note, under Linux
+    // processes with CAP_SYS_NICE privilege, a user can change
+    // scheduling policy and priority (thus need not be root). See
+    // POSIX "capabilities".
+    pthread_attr_t attr;
+    pthread_attr_init( &attr );
+    pthread_attr_setdetachstate( &attr, PTHREAD_CREATE_JOINABLE );
 #ifdef SCHED_RR // Undefined with some OSes (e.g. NetBSD 1.6.x with GNU Pthread)
-        if ( options && options->flags & RTAUDIO_SCHEDULE_REALTIME ) {
-            stream_.callbackInfo.doRealtime = true;
-            struct sched_param param;
-            int priority = options->priority;
-            int min = sched_get_priority_min( SCHED_RR );
-            int max = sched_get_priority_max( SCHED_RR );
-            if ( priority < min ) priority = min;
-            else if ( priority > max ) priority = max;
-            param.sched_priority = priority;
+    if ( options && options->flags & RTAUDIO_SCHEDULE_REALTIME ) {
+        stream_.callbackInfo.doRealtime = true;
+        struct sched_param param;
+        int priority = options->priority;
+        int min = sched_get_priority_min( SCHED_RR );
+        int max = sched_get_priority_max( SCHED_RR );
+        if ( priority < min ) priority = min;
+        else if ( priority > max ) priority = max;
+        param.sched_priority = priority;
 
-            // Set the policy BEFORE the priority. Otherwise it fails.
-            pthread_attr_setschedpolicy(&attr, SCHED_RR);
-            pthread_attr_setscope (&attr, PTHREAD_SCOPE_SYSTEM);
-            // This is definitely required. Otherwise it fails.
-            pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
-            pthread_attr_setschedparam(&attr, &param);
-        }
-        else
-            pthread_attr_setschedpolicy( &attr, SCHED_OTHER );
-#else
+        // Set the policy BEFORE the priority. Otherwise it fails.
+        pthread_attr_setschedpolicy(&attr, SCHED_RR);
+        pthread_attr_setscope (&attr, PTHREAD_SCOPE_SYSTEM);
+        // This is definitely required. Otherwise it fails.
+        pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
+        pthread_attr_setschedparam(&attr, &param);
+    }
+    else
         pthread_attr_setschedpolicy( &attr, SCHED_OTHER );
+#else
+    pthread_attr_setschedpolicy( &attr, SCHED_OTHER );
 #endif
 
-        stream_.callbackInfo.isRunning = true;
-        result = pthread_create( &stream_.callbackInfo.thread, &attr, alsaCallbackHandler, &stream_.callbackInfo );
-        pthread_attr_destroy( &attr );
+    stream_.callbackInfo.isRunning = true;
+    result = pthread_create( &stream_.callbackInfo.thread, &attr, alsaCallbackHandler, &stream_.callbackInfo );
+    pthread_attr_destroy( &attr );
+    if ( result ) {
+        // Failed. Try instead with default attributes.
+        result = pthread_create( &stream_.callbackInfo.thread, NULL, alsaCallbackHandler, &stream_.callbackInfo );
         if ( result ) {
-            // Failed. Try instead with default attributes.
-            result = pthread_create( &stream_.callbackInfo.thread, NULL, alsaCallbackHandler, &stream_.callbackInfo );
-            if ( result ) {
-                stream_.callbackInfo.isRunning = false;
-                errorText_ = "RtApiAlsa::error creating callback thread!";
-                goto error;
+            stream_.callbackInfo.isRunning = false;
+            errorText_ = "RtApiAlsa::error creating callback thread!";
+            return FAILURE;
+        }
+    }
+    return SUCCESS;
+}
+
+bool RtApiAlsa::allocateBuffers(StreamMode mode, unsigned int bufferSize)
+{
+    // Allocate necessary internal buffers.
+    unsigned long bufferBytes;
+    bufferBytes = stream_.nUserChannels[mode] * bufferSize * formatBytes( stream_.userFormat );
+    stream_.userBuffer[mode] = (char *) calloc( bufferBytes, 1 );
+    if ( stream_.userBuffer[mode] == NULL ) {
+        errorText_ = "RtApiAlsa::probeDeviceOpen: error allocating user buffer memory.";
+        return FAILURE;
+    }
+
+    if ( stream_.doConvertBuffer[mode] ) {
+
+        bool makeBuffer = true;
+        bufferBytes = stream_.nDeviceChannels[mode] * formatBytes( stream_.deviceFormat[mode] );
+        if ( mode == INPUT ) {
+            if ( stream_.mode == OUTPUT && stream_.deviceBuffer ) {
+                unsigned long bytesOut = stream_.nDeviceChannels[0] * formatBytes( stream_.deviceFormat[0] );
+                if ( bufferBytes <= bytesOut ) makeBuffer = false;
+            }
+        }
+
+        if ( makeBuffer ) {
+            bufferBytes *= bufferSize;
+            if ( stream_.deviceBuffer ) free( stream_.deviceBuffer );
+            stream_.deviceBuffer = (char *) calloc( bufferBytes, 1 );
+            if ( stream_.deviceBuffer == NULL ) {
+                errorText_ = "RtApiAlsa::probeDeviceOpen: error allocating device buffer memory.";
+                return FAILURE;
             }
         }
     }
-
     return SUCCESS;
+}
 
-error:
-    if ( apiInfo ) {
-        pthread_cond_destroy( &apiInfo->runnable_cv );
-        if ( apiInfo->handles[0] ) snd_pcm_close( apiInfo->handles[0] );
-        if ( apiInfo->handles[1] ) snd_pcm_close( apiInfo->handles[1] );
-        delete apiInfo;
-        stream_.apiHandle = 0;
+AlsaHandle * RtApiAlsa::getAlsaHandle()
+{
+    AlsaHandle* apiInfo = nullptr;
+    if ( stream_.apiHandle == 0 ) {
+        try {
+            apiInfo = (AlsaHandle *) new AlsaHandle;
+        }
+        catch ( std::bad_alloc& ) {
+            errorText_ = "RtApiAlsa::probeDeviceOpen: error allocating AlsaHandle memory.";
+            return nullptr;
+        }
+
+        if ( pthread_cond_init( &apiInfo->runnable_cv, NULL ) ) {
+            errorText_ = "RtApiAlsa::probeDeviceOpen: error initializing pthread condition variable.";
+            return nullptr;
+        }
+
+        stream_.apiHandle = (void *) apiInfo;
+        apiInfo->handles[0] = 0;
+        apiInfo->handles[1] = 0;
+    }
+    else {
+        apiInfo = (AlsaHandle *) stream_.apiHandle;
+    }
+    return apiInfo;
+}
+
+void RtApiAlsa::setupBufferConversion(StreamMode mode)
+{
+    // Set flags for buffer conversion
+    stream_.doConvertBuffer[mode] = false;
+    if ( stream_.userFormat != stream_.deviceFormat[mode] )
+        stream_.doConvertBuffer[mode] = true;
+    if ( stream_.nUserChannels[mode] < stream_.nDeviceChannels[mode] )
+        stream_.doConvertBuffer[mode] = true;
+    if ( stream_.userInterleaved != stream_.deviceInterleaved[mode] &&
+        stream_.nUserChannels[mode] > 1 )
+        stream_.doConvertBuffer[mode] = true;
+}
+
+int RtApiAlsa::setSwParams(snd_pcm_t * phandle, unsigned int bufferSize, snd_output_t* out)
+{
+    // Set the software configuration to fill buffers with zeros and prevent device stopping on xruns.
+    snd_pcm_sw_params_t *sw_params = NULL;
+    snd_pcm_sw_params_alloca( &sw_params );
+    snd_pcm_sw_params_current( phandle, sw_params );
+    snd_pcm_sw_params_set_start_threshold( phandle, sw_params, bufferSize );
+    snd_pcm_sw_params_set_stop_threshold( phandle, sw_params, ULONG_MAX );
+    snd_pcm_sw_params_set_silence_threshold( phandle, sw_params, 0 );
+
+    // The following two settings were suggested by Theo Veenker
+    //snd_pcm_sw_params_set_avail_min( phandle, sw_params, *bufferSize );
+    //snd_pcm_sw_params_set_xfer_align( phandle, sw_params, 1 );
+
+    // here are two options for a fix
+    //snd_pcm_sw_params_set_silence_size( phandle, sw_params, ULONG_MAX );
+    snd_pcm_uframes_t val;
+    snd_pcm_sw_params_get_boundary( sw_params, &val );
+    snd_pcm_sw_params_set_silence_size( phandle, sw_params, val );
+
+    int result = snd_pcm_sw_params( phandle, sw_params );
+#if defined(__RTAUDIO_DEBUG__)
+    fprintf(stderr, "\nRtApiAlsa: dump software params after installation:\n\n");
+    snd_pcm_sw_params_dump( sw_params, out );
+#endif
+    return result;
+}
+
+bool RtApiAlsa::setupBufferPeriod(RtAudio::StreamOptions* options, StreamMode mode, unsigned int *bufferSize,
+                                  snd_pcm_hw_params_t * hw_params, snd_pcm_t * phandle,int& buffer_period_out)
+{
+    // Set the buffer (or period) size.
+    int dir = 0;
+    int result = 0;
+    snd_pcm_uframes_t periodSize = *bufferSize;
+    result = snd_pcm_hw_params_set_period_size_near( phandle, hw_params, &periodSize, &dir );
+    if ( result < 0 ) {
+        errorStream_ << "RtApiAlsa::probeDeviceOpen: error setting period size for device " << snd_strerror( result ) << ".";
+        errorText_ = errorStream_.str();
+        return FAILURE;
+    }
+    *bufferSize = periodSize;
+
+    // Set the buffer number, which in ALSA is referred to as the "period".
+    unsigned int periods = 0;
+    if ( options && options->flags & RTAUDIO_MINIMIZE_LATENCY ) periods = 2;
+    if ( options && options->numberOfBuffers > 0 ) periods = options->numberOfBuffers;
+    if ( periods < 2 ) periods = 4; // a fairly safe default value
+    result = snd_pcm_hw_params_set_periods_near( phandle, hw_params, &periods, &dir );
+    if ( result < 0 ) {
+        errorStream_ << "RtApiAlsa::probeDeviceOpen: error setting periods for device " << snd_strerror( result ) << ".";
+        errorText_ = errorStream_.str();
+        return FAILURE;
     }
 
-    if ( phandle) snd_pcm_close( phandle );
+    // If attempting to setup a duplex stream, the bufferSize parameter
+    // MUST be the same in both directions!
+    if ( stream_.mode == OUTPUT && mode == INPUT && *bufferSize != stream_.bufferSize ) {
+        errorStream_ << "RtApiAlsa::probeDeviceOpen: system error setting buffer size for duplex stream on device.";
+        errorText_ = errorStream_.str();
+        return FAILURE;
+    }
 
-    for ( int i=0; i<2; i++ ) {
-        if ( stream_.userBuffer[i] ) {
-            free( stream_.userBuffer[i] );
-            stream_.userBuffer[i] = 0;
+    stream_.bufferSize = *bufferSize;
+    buffer_period_out = periods;
+    return SUCCESS;
+}
+
+bool RtApiAlsa::setupChannels(StreamMode mode, unsigned int channels, unsigned int firstChannel, snd_pcm_hw_params_t * hw_params, snd_pcm_t * phandle)
+{
+    // Determine the number of channels for this device.  We support a possible
+    // minimum device channel number > than the value requested by the user.
+    int result = 0;
+    stream_.nUserChannels[mode] = channels;
+    unsigned int value;
+    result = snd_pcm_hw_params_get_channels_max( hw_params, &value );
+    unsigned int deviceChannels = value;
+    if ( result < 0 || deviceChannels < channels + firstChannel ) {
+        errorStream_ << "RtApiAlsa::probeDeviceOpen: requested channel parameters not supported by device " << snd_strerror( result ) << ".";
+        errorText_ = errorStream_.str();
+        return FAILURE;
+    }
+
+    result = snd_pcm_hw_params_get_channels_min( hw_params, &value );
+    if ( result < 0 ) {
+        errorStream_ << "RtApiAlsa::probeDeviceOpen: error getting minimum channels for device " << snd_strerror( result ) << ".";
+        errorText_ = errorStream_.str();
+        return FAILURE;
+    }
+    deviceChannels = value;
+    if ( deviceChannels < channels + firstChannel ) deviceChannels = channels + firstChannel;
+    stream_.nDeviceChannels[mode] = deviceChannels;
+
+    // Set the device channels.
+    result = snd_pcm_hw_params_set_channels( phandle, hw_params, deviceChannels );
+    if ( result < 0 ) {
+        errorStream_ << "RtApiAlsa::probeDeviceOpen: error setting channels for device " << snd_strerror( result ) << ".";
+        errorText_ = errorStream_.str();
+        return FAILURE;
+    }
+    return SUCCESS;
+}
+
+int RtApiAlsa::setupByteswap(StreamMode mode, snd_pcm_format_t deviceFormat)
+{
+    int result = 0;
+    stream_.doByteSwap[mode] = false;
+    if ( deviceFormat != SND_PCM_FORMAT_S8 ) {
+        result = snd_pcm_format_cpu_endian( deviceFormat );
+        if ( result == 0 )
+            stream_.doByteSwap[mode] = true;
+    }
+    return result;
+}
+
+snd_pcm_format_t RtApiAlsa::setFormat(snd_pcm_hw_params_t * hw_params, snd_pcm_t * phandle, StreamMode mode, RtAudioFormat format)
+{
+    stream_.userFormat = format;
+    snd_pcm_format_t deviceFormat = getAlsaFormat(format);
+
+    std::array<snd_pcm_format_t, 8> test_formats = {deviceFormat, SND_PCM_FORMAT_FLOAT64, SND_PCM_FORMAT_FLOAT, SND_PCM_FORMAT_S32,
+                                                    SND_PCM_FORMAT_S24, SND_PCM_FORMAT_S16, SND_PCM_FORMAT_S8,
+                                                    SND_PCM_FORMAT_S24_3LE};
+    int res = 0;
+    for (auto f : test_formats){
+        res = snd_pcm_hw_params_test_format(phandle, hw_params, deviceFormat);
+        if (res == 0){
+            stream_.deviceFormat[mode] = getRtFormat(f);
+            return f;
         }
     }
+    return SND_PCM_FORMAT_UNKNOWN;
+}
 
-    if ( stream_.deviceBuffer ) {
-        free( stream_.deviceBuffer );
-        stream_.deviceBuffer = 0;
+int RtApiAlsa::setAccessMode(RtAudio::StreamOptions* options, snd_pcm_hw_params_t *hw_params, snd_pcm_t *phandle, StreamMode mode)
+{
+    int result = 0;
+    // Set access ... check user preference.
+    if ( options && options->flags & RTAUDIO_NONINTERLEAVED ) {
+        stream_.userInterleaved = false;
+        result = snd_pcm_hw_params_set_access( phandle, hw_params, SND_PCM_ACCESS_RW_NONINTERLEAVED );
+        if ( result < 0 ) {
+            result = snd_pcm_hw_params_set_access( phandle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED );
+            stream_.deviceInterleaved[mode] =  true;
+        }
+        else
+            stream_.deviceInterleaved[mode] = false;
     }
-
-    stream_.state = STREAM_CLOSED;
-    return FAILURE;
+    else {
+        stream_.userInterleaved = true;
+        result = snd_pcm_hw_params_set_access( phandle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED );
+        if ( result < 0 ) {
+            result = snd_pcm_hw_params_set_access( phandle, hw_params, SND_PCM_ACCESS_RW_NONINTERLEAVED );
+            stream_.deviceInterleaved[mode] =  false;
+        }
+        else
+            stream_.deviceInterleaved[mode] =  true;
+    }
+    return result;
 }
 
 int RtApiAlsa::processInput()

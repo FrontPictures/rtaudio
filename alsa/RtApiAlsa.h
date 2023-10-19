@@ -2,6 +2,8 @@
 #include "RtAudio.h"
 #include <alsa/asoundlib.h>
 
+struct AlsaHandle;
+
 class RtApiAlsa: public RtApi
 {
 public:
@@ -30,6 +32,17 @@ private:
                           unsigned int firstChannel, unsigned int sampleRate,
                           RtAudioFormat format, unsigned int *bufferSize,
                           RtAudio::StreamOptions *options ) override;
+
+    bool setupThread(RtAudio::StreamOptions* options);
+    bool allocateBuffers(StreamMode mode, unsigned int bufferSize);
+    AlsaHandle* getAlsaHandle();
+    void setupBufferConversion(StreamMode mode);
+    int setSwParams(snd_pcm_t * phandle, unsigned int bufferSize, snd_output_t* out);
+    bool setupBufferPeriod(RtAudio::StreamOptions* options, StreamMode mode, unsigned int *bufferSize, snd_pcm_hw_params_t * hw_params, snd_pcm_t * phandle, int& buffer_period_out);
+    bool setupChannels(StreamMode mode, unsigned int channels, unsigned int firstChannel, snd_pcm_hw_params_t * hw_params, snd_pcm_t * phandle);
+    int setupByteswap(StreamMode mode, snd_pcm_format_t deviceFormat);
+    snd_pcm_format_t setFormat(snd_pcm_hw_params_t * hw_params, snd_pcm_t * phandle, StreamMode mode, RtAudioFormat format);
+    int setAccessMode(RtAudio::StreamOptions* options, snd_pcm_hw_params_t *hw_params, snd_pcm_t *phandle, StreamMode mode);
 
     int processInput();
     bool processOutput(int samples);
