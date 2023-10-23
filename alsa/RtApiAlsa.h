@@ -1,6 +1,7 @@
 #pragma once
 #include "RtAudio.h"
 #include <alsa/asoundlib.h>
+#include <optional>
 
 struct AlsaHandle;
 
@@ -27,6 +28,11 @@ private:
     bool probeAudioCardDevice(snd_ctl_t* handle, snd_ctl_card_info_t* ctlinfo, int device, int card);
     bool probeAudioCard(int card);
     void listDevices(void) override;
+
+    bool probeSingleDeviceParams(RtAudio::DeviceInfo & info);
+    void probeSingleDeviceFormats(RtAudio::DeviceInfo & info, snd_pcm_t* phandle, snd_pcm_hw_params_t *params);
+    void probeSingleDeviceSamplerates(RtAudio::DeviceInfo & info, snd_pcm_t* phandle, snd_pcm_hw_params_t *params);
+    std::optional<unsigned int> probeSingleDeviceGetChannels(RtAudio::DeviceInfo& info, snd_pcm_stream_t stream);
     bool probeSingleDeviceInfo(RtAudio::DeviceInfo& info) override;
 
     bool probeDeviceInfo( RtAudio::DeviceInfo &info, std::string name );

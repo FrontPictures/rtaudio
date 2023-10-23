@@ -65,7 +65,7 @@ constexpr snd_pcm_format_t getAlsaFormat(RtAudioFormat format){
     }
 }
 
-constexpr RtAudioFormat getRtFormat(snd_pcm_format_t format){
+constexpr std::optional<RtAudioFormat> getRtFormat(snd_pcm_format_t format){
     switch (format) {
     case SND_PCM_FORMAT_S8:
         return RTAUDIO_SINT8;
@@ -80,7 +80,7 @@ constexpr RtAudioFormat getRtFormat(snd_pcm_format_t format){
     case SND_PCM_FORMAT_FLOAT64:
         return RTAUDIO_FLOAT64;
     default:
-        return RTAUDIO_SINT8;
+        return {};
     }
 }
 }
@@ -556,15 +556,17 @@ snd_pcm_format_t RtApiAlsa::setFormat(snd_pcm_hw_params_t * hw_params, snd_pcm_t
 {
     stream_.userFormat = format;
     snd_pcm_format_t deviceFormat = getAlsaFormat(format);
-
-    std::array<snd_pcm_format_t, 8> test_formats = {deviceFormat, SND_PCM_FORMAT_FLOAT64, SND_PCM_FORMAT_FLOAT, SND_PCM_FORMAT_S32,
-                                                    SND_PCM_FORMAT_S24, SND_PCM_FORMAT_S16, SND_PCM_FORMAT_S8,
-                                                    SND_PCM_FORMAT_S24_3LE};
+    snd_pcm_format_t test_formats[] = {deviceFormat, SND_PCM_FORMAT_FLOAT64, SND_PCM_FORMAT_FLOAT, SND_PCM_FORMAT_S32,
+                                                    SND_PCM_FORMAT_S24_3LE, SND_PCM_FORMAT_S16, SND_PCM_FORMAT_S8};
     int res = 0;
     for (auto f : test_formats){
         res = snd_pcm_hw_params_test_format(phandle, hw_params, deviceFormat);
         if (res == 0){
-            stream_.deviceFormat[mode] = getRtFormat(f);
+            auto f_o = getRtFormat(f);
+            if (!f_o){
+                continue;
+            }
+            stream_.deviceFormat[mode] = *f_o;
             return f;
         }
     }
@@ -1127,173 +1129,161 @@ void RtApiAlsa::listDevices()
     }
 }
 
-bool RtApiAlsa::probeSingleDeviceInfo(RtAudio::DeviceInfo & info)
+bool RtApiAlsa::probeSingleDeviceParams(RtAudio::DeviceInfo & info)
 {
-    int result, openMode = SND_PCM_ASYNC;
-    snd_pcm_stream_t stream;
-    snd_pcm_t *phandle;
-    snd_pcm_hw_params_t *params;
-    snd_pcm_hw_params_alloca( &params );
-
-    // First try for playback
-    stream = SND_PCM_STREAM_PLAYBACK;
-    result = snd_pcm_open( &phandle, info.busID.c_str(), stream, openMode | SND_PCM_NONBLOCK );
-    if ( result < 0 ) {
-        if ( result != -2 && result != -16) { // device doesn't support playback
-            errorStream_ << "RtApiAlsa::probeDeviceInfo: snd_pcm_open (playback) error for device (" << info.busID << "), " << snd_strerror( result ) << ".";
-            errorText_ = errorStream_.str();
-            error( RTAUDIO_WARNING );
-        }
-        goto captureProbe;
-    }
-
-    // The device is open ... fill the parameter structure.
-    result = snd_pcm_hw_params_any( phandle, params );
-    if ( result < 0 ) {
-        snd_pcm_close( phandle );
-        errorStream_ << "RtApiAlsa::probeDeviceInfo: snd_pcm_hw_params error for device (" << info.busID << "), " << snd_strerror( result ) << ".";
-        errorText_ = errorStream_.str();
-        error( RTAUDIO_WARNING );
-        goto captureProbe;
-    }
-
-    // Get output channel information.
-    unsigned int value;
-    result = snd_pcm_hw_params_get_channels_max( params, &value );
-    if ( result < 0 ) {
-        snd_pcm_close( phandle );
-        errorStream_ << "RtApiAlsa::probeDeviceInfo: error getting device (" << info.busID << ") output channels, " << snd_strerror( result ) << ".";
-        errorText_ = errorStream_.str();
-        error( RTAUDIO_WARNING );
-        goto captureProbe;
-    }
-    info.outputChannels = value;
-    snd_pcm_close( phandle );
-
-captureProbe:
-    stream = SND_PCM_STREAM_CAPTURE;
-    result = snd_pcm_open( &phandle, info.busID.c_str(), stream, openMode | SND_PCM_NONBLOCK);
-    if ( result < 0 && result ) {
-        if ( result != -2 && result != -16 ) { // device busy or doesn't support capture
-            errorStream_ << "RtApiAlsa::probeDeviceInfo: snd_pcm_open (capture) error for device (" << info.busID << "), " << snd_strerror( result ) << ".";
-            errorText_ = errorStream_.str();
-            error( RTAUDIO_WARNING );
-        }
-        goto probeParameters;
-    }
-
-    // The device is open ... fill the parameter structure.
-    result = snd_pcm_hw_params_any( phandle, params );
-    if ( result < 0 ) {
-        snd_pcm_close( phandle );
-        errorStream_ << "RtApiAlsa::probeDeviceInfo: snd_pcm_hw_params error for device (" << info.busID << "), " << snd_strerror( result ) << ".";
-        errorText_ = errorStream_.str();
-        error( RTAUDIO_WARNING );
-        if ( info.outputChannels == 0 ) return false;
-        goto probeParameters;
-    }
-
-    result = snd_pcm_hw_params_get_channels_max( params, &value );
-    if ( result < 0 ) {
-        snd_pcm_close( phandle );
-        errorStream_ << "RtApiAlsa::probeDeviceInfo: error getting device (" << info.busID << ") input channels, " << snd_strerror( result ) << ".";
-        errorText_ = errorStream_.str();
-        error( RTAUDIO_WARNING );
-        if ( info.outputChannels == 0 ) return false;
-        goto probeParameters;
-    }
-    info.inputChannels = value;
-    snd_pcm_close( phandle );
-
-    // If device opens for both playback and capture, we determine the channels.
-    if ( info.outputChannels > 0 && info.inputChannels > 0 )
-        info.duplexChannels = (info.outputChannels > info.inputChannels) ? info.inputChannels : info.outputChannels;
-
-probeParameters:
     // At this point, we just need to figure out the supported data
     // formats and sample rates.  We'll proceed by opening the device in
     // the direction with the maximum number of channels, or playback if
     // they are equal.  This might limit our sample rate options, but so
     // be it.
+    int result = 0;
+    snd_pcm_stream_t stream = SND_PCM_STREAM_PLAYBACK;
+    snd_pcm_t *phandle = nullptr;
+    snd_pcm_hw_params_t *params = nullptr;
+    snd_pcm_hw_params_alloca( &params );
+
+    OnExit onExit([&](){
+        if (phandle)
+            snd_pcm_close(phandle);
+        phandle = nullptr;
+    });
 
     if ( info.outputChannels >= info.inputChannels )
-        stream = SND_PCM_STREAM_PLAYBACK;
+       stream = SND_PCM_STREAM_PLAYBACK;
     else
-        stream = SND_PCM_STREAM_CAPTURE;
+       stream = SND_PCM_STREAM_CAPTURE;
 
-    result = snd_pcm_open( &phandle, info.busID.c_str(), stream, openMode | SND_PCM_NONBLOCK);
+    result = snd_pcm_open( &phandle, info.busID.c_str(), stream, SND_PCM_ASYNC | SND_PCM_NONBLOCK);
     if ( result < 0 ) {
-        errorStream_ << "RtApiAlsa::probeDeviceInfo: snd_pcm_open error for device (" << info.busID << "), " << snd_strerror( result ) << ".";
-        errorText_ = errorStream_.str();
-        error( RTAUDIO_WARNING );
-        return false;
+       errorStream_ << "RtApiAlsa::probeDeviceInfo: snd_pcm_open error for device (" << info.busID << "), " << snd_strerror( result ) << ".";
+       errorText_ = errorStream_.str();
+       error( RTAUDIO_WARNING );
+       return false;
     }
 
     // The device is open ... fill the parameter structure.
     result = snd_pcm_hw_params_any( phandle, params );
     if ( result < 0 ) {
-        snd_pcm_close( phandle );
-        errorStream_ << "RtApiAlsa::probeDeviceInfo: snd_pcm_hw_params error for device (" << info.busID << "), " << snd_strerror( result ) << ".";
-        errorText_ = errorStream_.str();
-        error( RTAUDIO_WARNING );
-        return false;
+       errorStream_ << "RtApiAlsa::probeDeviceInfo: snd_pcm_hw_params error for device (" << info.busID << "), " << snd_strerror( result ) << ".";
+       errorText_ = errorStream_.str();
+       error( RTAUDIO_WARNING );
+       return false;
     }
 
     // Test our discrete set of sample rate values.
+    probeSingleDeviceSamplerates(info, phandle, params);
+    if ( info.sampleRates.size() == 0 ) {
+       errorStream_ << "RtApiAlsa::probeDeviceInfo: no supported sample rates found for device (" << info.busID << ").";
+       errorText_ = errorStream_.str();
+       error( RTAUDIO_WARNING );
+       return false;
+    }
+
+    // Probe the supported data formats ... we don't care about endian-ness just yet
+    probeSingleDeviceFormats(info, phandle, params);
+    // Check that we have at least one supported format
+    if ( info.nativeFormats == 0 ) {
+       errorStream_ << "RtApiAlsa::probeDeviceInfo: pcm device (" << info.busID << ") data format not supported by RtAudio.";
+       errorText_ = errorStream_.str();
+       error( RTAUDIO_WARNING );
+       return false;
+    }
+    return SUCCESS;
+}
+
+void RtApiAlsa::probeSingleDeviceFormats(RtAudio::DeviceInfo & info, snd_pcm_t * phandle, snd_pcm_hw_params_t * params)
+{
+    snd_pcm_format_t formats_to_test [] = {SND_PCM_FORMAT_S8, SND_PCM_FORMAT_S16, SND_PCM_FORMAT_S24_3LE, SND_PCM_FORMAT_S32, SND_PCM_FORMAT_FLOAT};
+    info.nativeFormats = 0;
+
+    for (auto format : formats_to_test){
+       if ( snd_pcm_hw_params_test_format(phandle, params, format) != 0 ){
+            continue;
+       }
+       auto f_o = getRtFormat(format);
+       if (!f_o){
+            errorStream_ << "RtApiAlsa::probeDeviceInfo: format (" << format << ") not supported.";
+            errorText_ = errorStream_.str();
+            error( RTAUDIO_WARNING );
+            continue;
+       }
+       info.nativeFormats |= *f_o;
+    }
+}
+
+void RtApiAlsa::probeSingleDeviceSamplerates(RtAudio::DeviceInfo & info, snd_pcm_t* phandle, snd_pcm_hw_params_t *params)
+{
     info.sampleRates.clear();
     for ( unsigned int i=0; i<MAX_SAMPLE_RATES; i++ ) {
-        if ( snd_pcm_hw_params_test_rate( phandle, params, SAMPLE_RATES[i], 0 ) == 0 ) {
+       if ( snd_pcm_hw_params_test_rate( phandle, params, SAMPLE_RATES[i], 0 ) == 0 ) {
             info.sampleRates.push_back( SAMPLE_RATES[i] );
 
             if ( !info.preferredSampleRate || ( SAMPLE_RATES[i] <= 48000 && SAMPLE_RATES[i] > info.preferredSampleRate ) )
                 info.preferredSampleRate = SAMPLE_RATES[i];
-        }
+       }
     }
-    if ( info.sampleRates.size() == 0 ) {
-        snd_pcm_close( phandle );
-        errorStream_ << "RtApiAlsa::probeDeviceInfo: no supported sample rates found for device (" << info.busID << ").";
-        errorText_ = errorStream_.str();
-        error( RTAUDIO_WARNING );
-        return false;
-    }
-
-    // Probe the supported data formats ... we don't care about endian-ness just yet
-    snd_pcm_format_t format;
-    info.nativeFormats = 0;
-    format = SND_PCM_FORMAT_S8;
-    if ( snd_pcm_hw_params_test_format( phandle, params, format ) == 0 )
-        info.nativeFormats |= RTAUDIO_SINT8;
-    format = SND_PCM_FORMAT_S16;
-    if ( snd_pcm_hw_params_test_format( phandle, params, format ) == 0 )
-        info.nativeFormats |= RTAUDIO_SINT16;
-    format = SND_PCM_FORMAT_S24;
-    if ( snd_pcm_hw_params_test_format( phandle, params, format ) == 0 )
-        info.nativeFormats |= RTAUDIO_SINT24;
-    format = SND_PCM_FORMAT_S32;
-    if ( snd_pcm_hw_params_test_format( phandle, params, format ) == 0 )
-        info.nativeFormats |= RTAUDIO_SINT32;
-    format = SND_PCM_FORMAT_FLOAT;
-    if ( snd_pcm_hw_params_test_format( phandle, params, format ) == 0 )
-        info.nativeFormats |= RTAUDIO_FLOAT32;
-    format = SND_PCM_FORMAT_FLOAT64;
-    if ( snd_pcm_hw_params_test_format( phandle, params, format ) == 0 )
-        info.nativeFormats |= RTAUDIO_FLOAT64;
-    format = SND_PCM_FORMAT_S24_3LE;
-    snd_pcm_hw_params_get_format(params, &format);
-    if ( snd_pcm_hw_params_test_format( phandle, params, format ) == 0 )
-        info.nativeFormats |= RTAUDIO_SINT24;
-
-    // Check that we have at least one supported format
-    if ( info.nativeFormats == 0 ) {
-        snd_pcm_close( phandle );
-        errorStream_ << "RtApiAlsa::probeDeviceInfo: pcm device (" << info.busID << ") data format not supported by RtAudio.";
-        errorText_ = errorStream_.str();
-        error( RTAUDIO_WARNING );
-        return false;
-    }
-
-    // Close the device and return
-    snd_pcm_close( phandle );
-    return true;
 }
 
+std::optional<unsigned int> RtApiAlsa::probeSingleDeviceGetChannels(RtAudio::DeviceInfo & info, snd_pcm_stream_t stream)
+{
+    int result = 0;
+    snd_pcm_t *phandle = nullptr;
+    snd_pcm_hw_params_t *params = nullptr;
+    snd_pcm_hw_params_alloca( &params );
+
+    OnExit onExit([&](){
+        if (phandle)
+            snd_pcm_close(phandle);
+        phandle = nullptr;
+    });
+    result = snd_pcm_open( &phandle, info.busID.c_str(), stream, SND_PCM_ASYNC | SND_PCM_NONBLOCK );
+    if ( result < 0 ) {
+       errorStream_ << "RtApiAlsa::probeDeviceInfo: snd_pcm_open (playback) error for device (" << info.busID << "), " << snd_strerror( result ) << ".";
+       errorText_ = errorStream_.str();
+       error( RTAUDIO_WARNING );
+       return {};
+    }
+    result = snd_pcm_hw_params_any( phandle, params );
+    if ( result < 0 ) {
+       errorStream_ << "RtApiAlsa::probeDeviceInfo: snd_pcm_hw_params error for device (" << info.busID << "), " << snd_strerror( result ) << ".";
+       errorText_ = errorStream_.str();
+       error( RTAUDIO_WARNING );
+       return {};
+    }
+    unsigned int value = 0;
+    result = snd_pcm_hw_params_get_channels_max( params, &value );
+    if ( result < 0 ) {
+       errorStream_ << "RtApiAlsa::probeDeviceInfo: error getting device (" << info.busID << ") channels, " << snd_strerror( result ) << ".";
+       errorText_ = errorStream_.str();
+       error( RTAUDIO_WARNING );
+       return {};
+    }
+    return value;
+}
+
+bool RtApiAlsa::probeSingleDeviceInfo(RtAudio::DeviceInfo & info)
+{
+    int result = 0;
+    auto ch = probeSingleDeviceGetChannels(info, SND_PCM_STREAM_PLAYBACK);
+    if (ch)
+       info.outputChannels = *ch;
+    else
+       info.outputChannels = 0;
+
+    ch = probeSingleDeviceGetChannels(info, SND_PCM_STREAM_CAPTURE);
+    if (ch)
+       info.inputChannels = *ch;
+    else
+       info.inputChannels = 0;
+
+    // If device opens for both playback and capture, we determine the channels.
+    if ( info.outputChannels > 0 && info.inputChannels > 0 )
+       info.duplexChannels = (info.outputChannels > info.inputChannels) ? info.inputChannels : info.outputChannels;
+    else
+       info.duplexChannels = 0;
+
+    if (probeSingleDeviceParams(info)!=SUCCESS){
+       return false;
+    }
+    return true;
+}
