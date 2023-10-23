@@ -1020,102 +1020,110 @@ unlock:
     RtApi::tickStreamTime();
 }
 
+bool RtApiAlsa::probeAudioCardDevice(snd_ctl_t * handle, snd_ctl_card_info_t* ctlinfo, int device, int card)
+{
+    int result = 0;
+    snd_pcm_info_t *pcminfo = nullptr;
+    snd_pcm_info_alloca(&pcminfo);
+    snd_pcm_stream_t stream = SND_PCM_STREAM_PLAYBACK;
+    char name[128]{0};
+
+    snd_pcm_info_set_device( pcminfo, device );
+    snd_pcm_info_set_subdevice( pcminfo, 0 );
+
+    bool supportsInput = false;
+    bool supportsOutput = false;
+
+    stream = SND_PCM_STREAM_PLAYBACK;
+    snd_pcm_info_set_stream( pcminfo, stream );
+    result = snd_ctl_pcm_info( handle, pcminfo );
+    if (result==0){
+       supportsOutput = true;
+    }else if (result != -ENOENT){
+       return FAILURE;
+    }
+
+    stream = SND_PCM_STREAM_CAPTURE;
+    snd_pcm_info_set_stream( pcminfo, stream );
+    result = snd_ctl_pcm_info( handle, pcminfo );
+    if (result==0){
+       supportsInput = true;
+    }else if (result != -ENOENT){
+       return FAILURE;
+    }
+
+    if (!supportsInput && !supportsOutput){
+       errorStream_ << "RtApiAlsa::probeDevices: control pcm info, card = " << card << ", device = " << device << ", " << snd_strerror( result ) << ".";
+       errorText_ = errorStream_.str();
+       error( RTAUDIO_WARNING );
+       return FAILURE;
+    }
+
+    sprintf( name, "hw:%s,%d", snd_ctl_card_info_get_id(ctlinfo), device );
+    std::string id(name);
+    sprintf( name, "%s (%s)", snd_ctl_card_info_get_name(ctlinfo), snd_pcm_info_get_id(pcminfo) );
+    std::string prettyName(name);
+
+    RtAudio::DeviceInfo info;
+    info.name = prettyName;
+    info.busID = id;
+    info.ID = currentDeviceId_++;  // arbitrary internal device ID
+    info.supportsInput = supportsInput;
+    info.supportsOutput = supportsOutput;
+    deviceList_.push_back( info );
+    return SUCCESS;
+}
+
+bool RtApiAlsa::probeAudioCard(int card)
+{
+    char name[128]{0};
+    snd_ctl_t *handle = nullptr;
+    snd_ctl_card_info_t *ctlinfo = nullptr;
+    int result = 0;
+    sprintf( name, "hw:%d", card );
+    snd_ctl_card_info_alloca(&ctlinfo);
+    OnExit onExit([&](){
+        if (handle)
+            snd_ctl_close(handle);
+        handle = nullptr;
+    });
+    result = snd_ctl_open( &handle, name, 0 );
+    if ( result < 0 ) {
+       handle = 0;
+       errorStream_ << "RtApiAlsa::probeDevices: control open, card = " << card << ", " << snd_strerror( result ) << ".";
+       errorText_ = errorStream_.str();
+       error( RTAUDIO_WARNING );
+       return FAILURE;
+    }
+    result = snd_ctl_card_info( handle, ctlinfo );
+    if ( result < 0 ) {
+       errorStream_ << "RtApiAlsa::probeDevices: control info, card = " << card << ", " << snd_strerror( result ) << ".";
+       errorText_ = errorStream_.str();
+       error( RTAUDIO_WARNING );
+       return FAILURE;
+    }
+    int device = -1;
+    while( 1 ) {
+       result = snd_ctl_pcm_next_device( handle, &device );
+       if ( result < 0 ) {
+            errorStream_ << "RtApiAlsa::probeDevices: control next device, card = " << card << ", " << snd_strerror( result ) << ".";
+            errorText_ = errorStream_.str();
+            error( RTAUDIO_WARNING );
+            break;
+       }
+       if ( device < 0 )
+            break;
+       probeAudioCardDevice(handle, ctlinfo, device, card);
+    }
+    return SUCCESS;
+}
+
 void RtApiAlsa::listDevices()
 {
     deviceList_.clear();
-
-    // See list of required functionality in RtApi::probeDevices().
-    int result, device, card;
-    char name[128];
-    snd_ctl_t *handle = 0;
-    snd_ctl_card_info_t *ctlinfo;
-    snd_pcm_info_t *pcminfo;
-    snd_ctl_card_info_alloca(&ctlinfo);
-    snd_pcm_info_alloca(&pcminfo);
-    snd_pcm_stream_t stream;
-    std::string defaultDeviceName;
-
-    // Count cards and devices and get ascii identifiers.
-    card = -1;
-    snd_card_next( &card );
-    while ( card >= 0 ) {
-        sprintf( name, "hw:%d", card );
-        result = snd_ctl_open( &handle, name, 0 );
-        if ( result < 0 ) {
-            handle = 0;
-            errorStream_ << "RtApiAlsa::probeDevices: control open, card = " << card << ", " << snd_strerror( result ) << ".";
-            errorText_ = errorStream_.str();
-            error( RTAUDIO_WARNING );
-            goto nextcard;
-        }
-        result = snd_ctl_card_info( handle, ctlinfo );
-        if ( result < 0 ) {
-            errorStream_ << "RtApiAlsa::probeDevices: control info, card = " << card << ", " << snd_strerror( result ) << ".";
-            errorText_ = errorStream_.str();
-            error( RTAUDIO_WARNING );
-            goto nextcard;
-        }
-        device = -1;
-        while( 1 ) {
-            result = snd_ctl_pcm_next_device( handle, &device );
-            if ( result < 0 ) {
-                errorStream_ << "RtApiAlsa::probeDevices: control next device, card = " << card << ", " << snd_strerror( result ) << ".";
-                errorText_ = errorStream_.str();
-                error( RTAUDIO_WARNING );
-                break;
-            }
-            if ( device < 0 )
-                break;
-
-            snd_pcm_info_set_device( pcminfo, device );
-            snd_pcm_info_set_subdevice( pcminfo, 0 );
-
-            bool supportsInput = false;
-            bool supportsOutput = false;
-
-            stream = SND_PCM_STREAM_PLAYBACK;
-            snd_pcm_info_set_stream( pcminfo, stream );
-            result = snd_ctl_pcm_info( handle, pcminfo );
-            if (result==0){
-                supportsOutput = true;
-            }else if (result != -ENOENT){
-                continue;
-            }
-
-            stream = SND_PCM_STREAM_CAPTURE;
-            snd_pcm_info_set_stream( pcminfo, stream );
-            result = snd_ctl_pcm_info( handle, pcminfo );
-            if (result==0){
-                supportsInput = true;
-            }else if (result != -ENOENT){
-                continue;
-            }
-
-            if (!supportsInput && !supportsOutput){
-                errorStream_ << "RtApiAlsa::probeDevices: control pcm info, card = " << card << ", device = " << device << ", " << snd_strerror( result ) << ".";
-                errorText_ = errorStream_.str();
-                error( RTAUDIO_WARNING );
-                continue;
-            }
-
-
-            sprintf( name, "hw:%s,%d", snd_ctl_card_info_get_id(ctlinfo), device );
-            std::string id(name);
-            sprintf( name, "%s (%s)", snd_ctl_card_info_get_name(ctlinfo), snd_pcm_info_get_id(pcminfo) );
-            std::string prettyName(name);
-
-            RtAudio::DeviceInfo info;
-            info.name = prettyName;
-            info.busID = id;
-            info.ID = currentDeviceId_++;  // arbitrary internal device ID
-            info.supportsInput = supportsInput;
-            info.supportsOutput = supportsOutput;
-            deviceList_.push_back( info );
-        }
-nextcard:
-        if ( handle )
-            snd_ctl_close( handle );
-        snd_card_next( &card );
+    int card = -1;
+    while (snd_card_next( &card ), card >= 0) {
+       probeAudioCard(card);
     }
 }
 

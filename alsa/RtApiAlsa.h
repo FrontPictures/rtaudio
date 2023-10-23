@@ -24,6 +24,8 @@ public:
 private:
     std::vector<std::pair<std::string, unsigned int>> deviceIdPairs_;
 
+    bool probeAudioCardDevice(snd_ctl_t* handle, snd_ctl_card_info_t* ctlinfo, int device, int card);
+    bool probeAudioCard(int card);
     void listDevices(void) override;
     bool probeSingleDeviceInfo(RtAudio::DeviceInfo& info) override;
 
