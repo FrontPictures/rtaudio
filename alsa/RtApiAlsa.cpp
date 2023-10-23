@@ -53,7 +53,7 @@ constexpr snd_pcm_format_t getAlsaFormat(RtAudioFormat format){
     case RTAUDIO_SINT16:
         return SND_PCM_FORMAT_S16;
     case RTAUDIO_SINT24:
-        return SND_PCM_FORMAT_S24;
+        return SND_PCM_FORMAT_S24_3LE;
     case RTAUDIO_SINT32:
         return SND_PCM_FORMAT_S32;
     case RTAUDIO_FLOAT32:
@@ -71,7 +71,6 @@ constexpr RtAudioFormat getRtFormat(snd_pcm_format_t format){
         return RTAUDIO_SINT8;
     case SND_PCM_FORMAT_S16:
         return RTAUDIO_SINT16;
-    case SND_PCM_FORMAT_S24:
     case SND_PCM_FORMAT_S24_3LE:
         return RTAUDIO_SINT24;
     case SND_PCM_FORMAT_S32:
@@ -632,7 +631,7 @@ int RtApiAlsa::processInput()
             void *bufs[channels];
             size_t offset = stream_.bufferSize * formatBytes( format );
             for ( int i=0; i<channels; i++ )
-                bufs[i] = (void *) (buffer + (i * offset));
+                bufs[i] = (void *) (buffer + (i * offset) + (readSamples * formatBytes(format)));
             result = snd_pcm_readn( handle[1], bufs, stream_.bufferSize );
         }
         if ( result <= 0) {
@@ -652,7 +651,7 @@ int RtApiAlsa::processInput()
                     errorText_ = errorStream_.str();
                 }
             }else if (result == -EAGAIN){
-                uint64_t bufsize64 = stream_.bufferSize;
+                uint64_t bufsize64 = stream_.bufferSize - readSamples;
                 usleep(bufsize64 * (1000000 / 2) / stream_.sampleRate);
                 continue;
             }else {
