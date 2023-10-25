@@ -29,9 +29,13 @@ public:
 private:
     std::vector< PaDeviceInfo > paDeviceList_;
 
-    void probeDevices( void ) override;
+    void listDevices(void) override;
+    bool probeSingleDeviceInfo(RtAudio::DeviceInfo& info) override;
+
     bool probeDeviceOpen( unsigned int deviceId, StreamMode mode, unsigned int channels,
                           unsigned int firstChannel, unsigned int sampleRate,
                           RtAudioFormat format, unsigned int *bufferSize,
                           RtAudio::StreamOptions *options ) override;
+    void setRateAndFormat(StreamMode mode, RtAudioFormat format, unsigned int sampleRate, pa_sample_spec& ss);
+    bool setupThread(RtAudio::StreamOptions *options, pthread_t *pah);
 };

@@ -380,7 +380,7 @@ class RTAUDIO_DLL_PUBLIC RtAudio
   struct StreamOptions {
     RtAudioStreamFlags flags{};      /*!< A bit-mask of stream flags (RTAUDIO_NONINTERLEAVED, RTAUDIO_MINIMIZE_LATENCY, RTAUDIO_HOG_DEVICE, RTAUDIO_ALSA_USE_DEFAULT). */
     unsigned int numberOfBuffers{};  /*!< Number of stream buffers. */
-    std::string streamName;        /*!< A stream name (currently used only in Jack). */
+    std::string streamName;        /*!< A stream name (currently used only in Jack and Pulse). */
     int priority{};                  /*!< Scheduling priority of callback thread (only used with flag RTAUDIO_SCHEDULE_REALTIME). */
   };
 
