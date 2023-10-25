@@ -729,17 +729,17 @@ void RtApi :: setConvertInfo( StreamMode mode, unsigned int firstChannel )
   }
 }
 
-void RtApi :: convertBuffer( char *outBuffer, char *inBuffer, ConvertInfo info, unsigned int samples )
+void RtApi :: convertBuffer( char *outBuffer, char *inBuffer, ConvertInfo info, unsigned int samples, StreamMode mode)
 {
   // This function does format conversion, input/output channel compensation, and
   // data interleaving/deinterleaving.  24-bit integers are assumed to occupy
   // the lower three bytes of a 32-bit integer.
 
-    if ( stream_.deviceInterleaved[stream_.mode] != stream_.userInterleaved ) {
+    if ( stream_.deviceInterleaved[mode] != stream_.userInterleaved ) {
         info.inOffset.clear();
         info.outOffset.clear();
-      if ( ( stream_.mode == OUTPUT && stream_.deviceInterleaved[stream_.mode] ) ||
-           ( stream_.mode == INPUT && stream_.userInterleaved ) ) {
+      if ( ( mode == OUTPUT && stream_.deviceInterleaved[mode] ) ||
+           ( mode == INPUT && stream_.userInterleaved ) ) {
         for ( int k=0; k<info.channels; k++ ) {
           info.inOffset.push_back( k * samples );
           info.outOffset.push_back( k );

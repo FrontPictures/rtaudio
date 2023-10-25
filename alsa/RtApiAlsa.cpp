@@ -673,7 +673,7 @@ int RtApiAlsa::processInput()
 
     // Do buffer conversion if necessary.
     if ( stream_.doConvertBuffer[1] )
-        convertBuffer( stream_.userBuffer[1], stream_.deviceBuffer, stream_.convertInfo[1], readSamples);
+        convertBuffer( stream_.userBuffer[1], stream_.deviceBuffer, stream_.convertInfo[1], readSamples, StreamMode::INPUT);
 
     // Check stream latency
     result = snd_pcm_delay( handle[1], &frames );
@@ -694,7 +694,7 @@ bool RtApiAlsa::processOutput(int samples)
     // Setup parameters and do buffer conversion if necessary.
     if ( stream_.doConvertBuffer[0] ) {
         buffer = stream_.deviceBuffer;
-        convertBuffer( buffer, stream_.userBuffer[0], stream_.convertInfo[0], samples);
+        convertBuffer( buffer, stream_.userBuffer[0], stream_.convertInfo[0], samples, StreamMode::OUTPUT);
         channels = stream_.nDeviceChannels[0];
         format = stream_.deviceFormat[0];
     }
