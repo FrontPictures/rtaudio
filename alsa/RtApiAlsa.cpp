@@ -560,7 +560,7 @@ snd_pcm_format_t RtApiAlsa::setFormat(snd_pcm_hw_params_t * hw_params, snd_pcm_t
                                                     SND_PCM_FORMAT_S24_3LE, SND_PCM_FORMAT_S16, SND_PCM_FORMAT_S8};
     int res = 0;
     for (auto f : test_formats){
-        res = snd_pcm_hw_params_test_format(phandle, hw_params, deviceFormat);
+        res = snd_pcm_hw_params_test_format(phandle, hw_params, f);
         if (res == 0){
             auto f_o = getRtFormat(f);
             if (!f_o){
@@ -659,6 +659,7 @@ int RtApiAlsa::processInput()
             }else {
                 errorStream_ << "RtApiAlsa::callbackEvent: audio read error, " << snd_strerror( result ) << ".";
                 errorText_ = errorStream_.str();
+                stream_.state = STREAM_ERROR;
             }
             error( RTAUDIO_WARNING );
             return 0;
@@ -739,6 +740,8 @@ bool RtApiAlsa::processOutput(int samples)
                     errorText_ = errorStream_.str();
                 }
             }else if (result == -EAGAIN){
+                uint64_t bufsize64 = stream_.bufferSize - samplesPlayed;
+                usleep(bufsize64 * (1000000 / 2) / stream_.sampleRate);
                 continue;
             }
             else {
@@ -763,29 +766,23 @@ bool RtApiAlsa::processOutput(int samples)
 
 void RtApiAlsa :: closeStream()
 {
-    if ( stream_.state == STREAM_CLOSED ) {
-        errorText_ = "RtApiAlsa::closeStream(): no open stream to close!";
-        error( RTAUDIO_WARNING );
-        return;
-    }
-
     AlsaHandle *apiInfo = (AlsaHandle *) stream_.apiHandle;
-    stream_.callbackInfo.isRunning = false;
-    MUTEX_LOCK( &stream_.mutex );
-    if ( stream_.state == STREAM_STOPPED ) {
+    {
+        MutexRaii<StreamMutex> lock(stream_.mutex);
+        if ( stream_.state == STREAM_CLOSED ) {
+            errorText_ = "RtApiAlsa::closeStream(): no open stream to close!";
+            error( RTAUDIO_WARNING );
+            return;
+        }
+        stream_.callbackInfo.isRunning = false;
+        if (stream_.state == STREAM_RUNNING){
+            abortStreamNoMutex();
+        }
         apiInfo->runnable = true;
         pthread_cond_signal( &apiInfo->runnable_cv );
     }
-    MUTEX_UNLOCK( &stream_.mutex );
-    pthread_join( stream_.callbackInfo.thread, NULL );
 
-    if ( stream_.state == STREAM_RUNNING ) {
-        stream_.state = STREAM_STOPPED;
-        if ( stream_.mode == OUTPUT || stream_.mode == DUPLEX )
-            snd_pcm_drop( apiInfo->handles[0] );
-        if ( stream_.mode == INPUT || stream_.mode == DUPLEX )
-            snd_pcm_drop( apiInfo->handles[1] );
-    }
+    pthread_join( stream_.callbackInfo.thread, NULL );
 
     if ( apiInfo ) {
         pthread_cond_destroy( &apiInfo->runnable_cv );
@@ -812,164 +809,60 @@ void RtApiAlsa :: closeStream()
 
 RtAudioErrorType RtApiAlsa :: startStream()
 {
-    // This method calls snd_pcm_prepare if the device isn't already in that state.
-
+    MutexRaii<StreamMutex> lock(stream_.mutex);
     if ( stream_.state != STREAM_STOPPED ) {
         if ( stream_.state == STREAM_RUNNING )
             errorText_ = "RtApiAlsa::startStream(): the stream is already running!";
         else if ( stream_.state == STREAM_STOPPING || stream_.state == STREAM_CLOSED )
             errorText_ = "RtApiAlsa::startStream(): the stream is stopping or closed!";
+        else if ( stream_.state == STREAM_ERROR )
+            errorText_ = "RtApiAlsa::stopStream(): the stream is in error state!";
         return error( RTAUDIO_WARNING );
     }
-
-    MUTEX_LOCK( &stream_.mutex );
-
-    /*
-  #if defined( HAVE_GETTIMEOFDAY )
-  gettimeofday( &stream_.lastTickTimestamp, NULL );
-  #endif
-  */
-
-    int result = 0;
-    snd_pcm_state_t state;
     AlsaHandle *apiInfo = (AlsaHandle *) stream_.apiHandle;
-    snd_pcm_t **handle = (snd_pcm_t **) apiInfo->handles;
-    if ( stream_.mode == OUTPUT || stream_.mode == DUPLEX ) {
-        state = snd_pcm_state( handle[0] );
-        if ( state != SND_PCM_STATE_PREPARED ) {
-            result = snd_pcm_prepare( handle[0] );
-            if ( result < 0 ) {
-                errorStream_ << "RtApiAlsa::startStream: error preparing output pcm device, " << snd_strerror( result ) << ".";
-                errorText_ = errorStream_.str();
-                goto unlock;
-            }
-        }
-    }
-
-    if ( ( stream_.mode == INPUT || stream_.mode == DUPLEX ) && !apiInfo->synchronized ) {
-        result = snd_pcm_drop(handle[1]); // fix to remove stale data received since device has been open
-        state = snd_pcm_state( handle[1] );
-        if ( state != SND_PCM_STATE_PREPARED ) {
-            result = snd_pcm_prepare( handle[1] );
-            if ( result < 0 ) {
-                errorStream_ << "RtApiAlsa::startStream: error preparing input pcm device, " << snd_strerror( result ) << ".";
-                errorText_ = errorStream_.str();
-                goto unlock;
-            }
-        }
-    }
-
+    prepareDevices();//ignore
     stream_.state = STREAM_RUNNING;
-
-unlock:
     apiInfo->runnable = true;
     pthread_cond_signal( &apiInfo->runnable_cv );
-    MUTEX_UNLOCK( &stream_.mutex );
-
-    if ( result < 0 ) return error( RTAUDIO_SYSTEM_ERROR );
     return RTAUDIO_NO_ERROR;
 }
 
 RtAudioErrorType RtApiAlsa :: stopStream()
 {
+    MutexRaii<StreamMutex> lock(stream_.mutex);
     if ( stream_.state != STREAM_RUNNING && stream_.state != STREAM_STOPPING) {
         if ( stream_.state == STREAM_STOPPED )
             errorText_ = "RtApiAlsa::stopStream(): the stream is already stopped!";
         else if ( stream_.state == STREAM_CLOSED )
             errorText_ = "RtApiAlsa::stopStream(): the stream is closed!";
+        else if ( stream_.state == STREAM_ERROR )
+            errorText_ = "RtApiAlsa::stopStream(): the stream is in error state!";
         return error( RTAUDIO_WARNING );
     }
-
     stream_.state = STREAM_STOPPED;
-    MUTEX_LOCK( &stream_.mutex );
-
-    int result = 0;
     AlsaHandle *apiInfo = (AlsaHandle *) stream_.apiHandle;
-    snd_pcm_t **handle = (snd_pcm_t **) apiInfo->handles;
-    if ( stream_.mode == OUTPUT || stream_.mode == DUPLEX ) {
-        if ( apiInfo->synchronized )
-            result = snd_pcm_drop( handle[0] );
-        else
-            result = snd_pcm_drain( handle[0] );
-        if ( result < 0 ) {
-            errorStream_ << "RtApiAlsa::stopStream: error draining output pcm device, " << snd_strerror( result ) << ".";
-            errorText_ = errorStream_.str();
-            goto unlock;
-        }
-    }
-
-    if ( ( stream_.mode == INPUT || stream_.mode == DUPLEX ) && !apiInfo->synchronized ) {
-        result = snd_pcm_drop( handle[1] );
-        if ( result < 0 ) {
-            errorStream_ << "RtApiAlsa::stopStream: error stopping input pcm device, " << snd_strerror( result ) << ".";
-            errorText_ = errorStream_.str();
-            goto unlock;
-        }
-    }
-
-unlock:
+    drainDevices(true);
     apiInfo->runnable = false; // fixes high CPU usage when stopped
-    MUTEX_UNLOCK( &stream_.mutex );
-
-    if ( result < 0 ) return error( RTAUDIO_SYSTEM_ERROR );
     return RTAUDIO_NO_ERROR;
 }
 
 RtAudioErrorType RtApiAlsa :: abortStream()
 {
-    if ( stream_.state != STREAM_RUNNING) {
-        if ( stream_.state == STREAM_STOPPED )
-            errorText_ = "RtApiAlsa::abortStream(): the stream is already stopped!";
-        else if ( stream_.state == STREAM_STOPPING || stream_.state == STREAM_CLOSED )
-            errorText_ = "RtApiAlsa::abortStream(): the stream is stopping or closed!";
-        return error( RTAUDIO_WARNING );
-    }
-
-    stream_.state = STREAM_STOPPED;
-    MUTEX_LOCK( &stream_.mutex );
-
-    int result = 0;
-    AlsaHandle *apiInfo = (AlsaHandle *) stream_.apiHandle;
-    snd_pcm_t **handle = (snd_pcm_t **) apiInfo->handles;
-    if ( stream_.mode == OUTPUT || stream_.mode == DUPLEX ) {
-        result = snd_pcm_drop( handle[0] );
-        if ( result < 0 ) {
-            errorStream_ << "RtApiAlsa::abortStream: error aborting output pcm device, " << snd_strerror( result ) << ".";
-            errorText_ = errorStream_.str();
-            goto unlock;
-        }
-    }
-
-    if ( ( stream_.mode == INPUT || stream_.mode == DUPLEX ) && !apiInfo->synchronized ) {
-        result = snd_pcm_drop( handle[1] );
-        if ( result < 0 ) {
-            errorStream_ << "RtApiAlsa::abortStream: error aborting input pcm device, " << snd_strerror( result ) << ".";
-            errorText_ = errorStream_.str();
-            goto unlock;
-        }
-    }
-
-unlock:
-    apiInfo->runnable = false; // fixes high CPU usage when stopped
-    MUTEX_UNLOCK( &stream_.mutex );
-
-    if ( result < 0 ) return error( RTAUDIO_SYSTEM_ERROR );
-    return RTAUDIO_NO_ERROR;
+    MutexRaii<StreamMutex> lock(stream_.mutex);
+    return abortStreamNoMutex();
 }
 
 void RtApiAlsa :: callbackEvent()
 {
+    usleep(0);
+    MutexRaii<StreamMutex> lock(stream_.mutex);
     AlsaHandle *apiInfo = (AlsaHandle *) stream_.apiHandle;
-    if ( stream_.state == STREAM_STOPPED ) {
-        MUTEX_LOCK( &stream_.mutex );
+    if ( stream_.state == STREAM_STOPPED || stream_.state == STREAM_ERROR ) {
         while ( !apiInfo->runnable )
             pthread_cond_wait( &apiInfo->runnable_cv, &stream_.mutex );
-
         if ( stream_.state != STREAM_RUNNING ) {
-            MUTEX_UNLOCK( &stream_.mutex );
             return;
         }
-        MUTEX_UNLOCK( &stream_.mutex );
     }
 
     if ( stream_.state == STREAM_CLOSED ) {
@@ -992,11 +885,6 @@ void RtApiAlsa :: callbackEvent()
         apiInfo->xrun[1] = false;
     }
 
-    MUTEX_LOCK( &stream_.mutex );
-
-    // The state might change while waiting on a mutex.
-    if ( stream_.state == STREAM_STOPPED ) goto unlock;
-
     int result;
     char *buffer;
     int channels;
@@ -1016,10 +904,87 @@ void RtApiAlsa :: callbackEvent()
        processOutput(inputSamples > 0 ? inputSamples : stream_.bufferSize);
     }
 
-unlock:
-    MUTEX_UNLOCK( &stream_.mutex );
-
     RtApi::tickStreamTime();
+}
+
+RtAudioErrorType RtApiAlsa::abortStreamNoMutex()
+{
+    if ( stream_.state != STREAM_RUNNING) {
+       if ( stream_.state == STREAM_STOPPED )
+            errorText_ = "RtApiAlsa::abortStream(): the stream is already stopped!";
+       else if ( stream_.state == STREAM_STOPPING || stream_.state == STREAM_CLOSED )
+            errorText_ = "RtApiAlsa::abortStream(): the stream is stopping or closed!";
+       else if ( stream_.state == STREAM_ERROR )
+            errorText_ = "RtApiAlsa::stopStream(): the stream is in error state!";
+       return error( RTAUDIO_WARNING );
+    }
+    stream_.state = STREAM_STOPPED;
+    AlsaHandle *apiInfo = (AlsaHandle *) stream_.apiHandle;
+    drainDevices(false);
+    apiInfo->runnable = false; // fixes high CPU usage when stopped
+    return RTAUDIO_NO_ERROR;
+}
+
+RtAudioErrorType RtApiAlsa::drainDevices(bool drain)
+{
+    int result = 0;
+    AlsaHandle *apiInfo = (AlsaHandle *) stream_.apiHandle;
+    snd_pcm_t **handle = (snd_pcm_t **) apiInfo->handles;
+    if ( stream_.mode == OUTPUT || stream_.mode == DUPLEX ) {
+       if ( apiInfo->synchronized || drain == false)
+            result = snd_pcm_drop( handle[0] );
+       else
+            result = snd_pcm_drain( handle[0] );
+       if ( result < 0 ) {
+            errorStream_ << "RtApiAlsa::stopStream: error draining output pcm device, " << snd_strerror( result ) << ".";
+            errorText_ = errorStream_.str();
+            return error(RTAUDIO_SYSTEM_ERROR);
+       }
+    }
+
+    if ( ( stream_.mode == INPUT || stream_.mode == DUPLEX ) && !apiInfo->synchronized ) {
+       result = snd_pcm_drop( handle[1] );
+       if ( result < 0 ) {
+            errorStream_ << "RtApiAlsa::stopStream: error stopping input pcm device, " << snd_strerror( result ) << ".";
+            errorText_ = errorStream_.str();
+            return error(RTAUDIO_SYSTEM_ERROR);
+       }
+    }
+    return RTAUDIO_NO_ERROR;
+}
+
+RtAudioErrorType RtApiAlsa::prepareDevices()
+{
+    // This method calls snd_pcm_prepare if the device isn't already in that state.
+    AlsaHandle *apiInfo = (AlsaHandle *) stream_.apiHandle;
+    snd_pcm_t **handle = (snd_pcm_t **) apiInfo->handles;
+    int result = 0;
+    snd_pcm_state_t state = SND_PCM_STATE_OPEN;
+    if ( stream_.mode == OUTPUT || stream_.mode == DUPLEX ) {
+       state = snd_pcm_state( handle[0] );
+       if ( state != SND_PCM_STATE_PREPARED ) {
+            result = snd_pcm_prepare( handle[0] );
+            if ( result < 0 ) {
+                errorStream_ << "RtApiAlsa::startStream: error preparing output pcm device, " << snd_strerror( result ) << ".";
+                errorText_ = errorStream_.str();
+                return error( RTAUDIO_SYSTEM_ERROR );
+            }
+       }
+    }
+
+    if ( ( stream_.mode == INPUT || stream_.mode == DUPLEX ) && !apiInfo->synchronized ) {
+       result = snd_pcm_drop(handle[1]); // fix to remove stale data received since device has been open
+       state = snd_pcm_state( handle[1] );
+       if ( state != SND_PCM_STATE_PREPARED ) {
+            result = snd_pcm_prepare( handle[1] );
+            if ( result < 0 ) {
+                errorStream_ << "RtApiAlsa::startStream: error preparing input pcm device, " << snd_strerror( result ) << ".";
+                errorText_ = errorStream_.str();
+                return error( RTAUDIO_SYSTEM_ERROR );
+            }
+       }
+    }
+    return RTAUDIO_NO_ERROR;
 }
 
 bool RtApiAlsa::probeAudioCardDevice(snd_ctl_t * handle, snd_ctl_card_info_t* ctlinfo, int device, int card)

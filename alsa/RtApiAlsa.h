@@ -25,6 +25,9 @@ public:
 private:
     std::vector<std::pair<std::string, unsigned int>> deviceIdPairs_;
 
+    RtAudioErrorType abortStreamNoMutex( void );
+    RtAudioErrorType drainDevices(bool drain);
+    RtAudioErrorType prepareDevices();
     bool probeAudioCardDevice(snd_ctl_t* handle, snd_ctl_card_info_t* ctlinfo, int device, int card);
     bool probeAudioCard(int card);
     void listDevices(void) override;
@@ -35,7 +38,6 @@ private:
     std::optional<unsigned int> probeSingleDeviceGetChannels(RtAudio::DeviceInfo& info, snd_pcm_stream_t stream);
     bool probeSingleDeviceInfo(RtAudio::DeviceInfo& info) override;
 
-    bool probeDeviceInfo( RtAudio::DeviceInfo &info, std::string name );
     bool probeDeviceOpen( unsigned int deviceId, StreamMode mode, unsigned int channels,
                           unsigned int firstChannel, unsigned int sampleRate,
                           RtAudioFormat format, unsigned int *bufferSize,

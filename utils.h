@@ -24,3 +24,18 @@ if ( objectPtr )\
   objectPtr->Release();\
   objectPtr = NULL;\
 }
+
+template<class A>
+class MutexRaii{
+public:
+    MutexRaii(A& a) : mMutex(a){
+        MUTEX_LOCK(&mMutex);
+    }
+    ~MutexRaii(){
+        MUTEX_UNLOCK(&mMutex);
+    }
+    MutexRaii(const MutexRaii&) = delete;
+    MutexRaii& operator=(const MutexRaii&) = delete;
+private:
+    A& mMutex;
+};
