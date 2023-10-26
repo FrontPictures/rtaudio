@@ -14,8 +14,6 @@ struct PaDeviceProbeInfo {
     std::string defaultSourceName;
     int defaultRate;
     unsigned int *currentDeviceId;
-    std::vector< std::string > deviceNames;
-    std::vector< RtApiPulse::PaDeviceInfo > *paDeviceList;
     std::vector< RtAudio::DeviceInfo > *rtDeviceList;
 };
 
@@ -69,13 +67,8 @@ static void rt_pa_set_sink_info( pa_context * /*c*/, const pa_sink_info *i,
     if ( eol ) return;
 
     PaDeviceProbeInfo *paProbeInfo = static_cast<PaDeviceProbeInfo *>( userdata );
-    std::string name = pa_proplist_gets( i->proplist, "device.description" );
-    paProbeInfo->deviceNames.push_back( name );
-    for ( size_t n=0; n<paProbeInfo->rtDeviceList->size(); n++ )
-        if ( paProbeInfo->rtDeviceList->at(n).name == name ) return; // we've already probed this one
-
     RtAudio::DeviceInfo info;
-    info.name = name;
+    info.name = pa_proplist_gets( i->proplist, "device.description" );
     // TODO get device id for Pulse devices
     info.busID = i->name;
     info.outputChannels = i->sample_spec.channels;
@@ -89,10 +82,6 @@ static void rt_pa_set_sink_info( pa_context * /*c*/, const pa_sink_info *i,
     info.ID = *(paProbeInfo->currentDeviceId);
     *(paProbeInfo->currentDeviceId) = info.ID + 1;
     paProbeInfo->rtDeviceList->push_back( info );
-
-    RtApiPulse::PaDeviceInfo painfo;
-    painfo.sinkName = i->name;
-    paProbeInfo->paDeviceList->push_back( painfo );
 }
 
 // Used to get input device information.
@@ -105,27 +94,8 @@ static void rt_pa_set_source_info_and_quit( pa_context * /*c*/, const pa_source_
         return;
     }
 
-    std::string name = pa_proplist_gets( i->proplist, "device.description" );
-    paProbeInfo->deviceNames.push_back( name );
-    for ( size_t n=0; n<paProbeInfo->rtDeviceList->size(); n++ ) {
-        if ( paProbeInfo->rtDeviceList->at(n).name == name ) {
-            // Check if we've already probed this as an output.
-            if ( !paProbeInfo->paDeviceList->at(n).sinkName.empty() ) {
-                // This must be a duplex device. Update the device info.
-                paProbeInfo->paDeviceList->at(n).sourceName = i->name;
-                paProbeInfo->rtDeviceList->at(n).inputChannels = i->sample_spec.channels;
-                paProbeInfo->rtDeviceList->at(n).isDefaultInput = ( paProbeInfo->defaultSourceName == i->name );
-                paProbeInfo->rtDeviceList->at(n).supportsInput = true;
-                paProbeInfo->rtDeviceList->at(n).duplexChannels =
-                        (paProbeInfo->rtDeviceList->at(n).inputChannels < paProbeInfo->rtDeviceList->at(n).outputChannels)
-                        ? paProbeInfo->rtDeviceList->at(n).inputChannels : paProbeInfo->rtDeviceList->at(n).outputChannels;
-            }
-            return; // we already have this
-        }
-    }
-
     RtAudio::DeviceInfo info;
-    info.name = name;
+    info.name = pa_proplist_gets( i->proplist, "device.description" );
     info.inputChannels = i->sample_spec.channels;
     info.preferredSampleRate = i->sample_spec.rate;
     info.isDefaultInput = ( paProbeInfo->defaultSourceName == i->name );
@@ -137,10 +107,6 @@ static void rt_pa_set_source_info_and_quit( pa_context * /*c*/, const pa_source_
     info.ID = *(paProbeInfo->currentDeviceId);
     *(paProbeInfo->currentDeviceId) = info.ID + 1;
     paProbeInfo->rtDeviceList->push_back( info );
-
-    RtApiPulse::PaDeviceInfo painfo;
-    painfo.sourceName = i->name;
-    paProbeInfo->paDeviceList->push_back( painfo );
 }
 
 // This is the initial function that is called when the callback is
@@ -318,10 +284,12 @@ bool RtApiPulse::probeDeviceOpen( unsigned int deviceId, StreamMode mode,
         stream_.state = STREAM_CLOSED;
     });
 
+    const char *dev_name = NULL;
     int deviceIdx = -1;
     for ( unsigned int m=0; m<deviceList_.size(); m++ ) {
         if ( deviceList_[m].ID == deviceId ) {
             deviceIdx = m;
+            dev_name = deviceList_[m].busID.c_str();
             break;
         }
     }
@@ -332,14 +300,6 @@ bool RtApiPulse::probeDeviceOpen( unsigned int deviceId, StreamMode mode,
         errorText_ = "PulseAudio does not support channel offset mapping.";
         return false;
     }
-
-    // These may be NULL for default devices but we already have the names.
-    const char *dev_input = NULL;
-    const char *dev_output = NULL;
-    if ( !paDeviceList_[deviceIdx].sourceName.empty() )
-        dev_input = paDeviceList_[deviceIdx].sourceName.c_str();
-    if ( !paDeviceList_[deviceIdx].sinkName.empty() )
-        dev_output = paDeviceList_[deviceIdx].sinkName.c_str();
 
     if ( mode==INPUT && deviceList_[deviceIdx].inputChannels < channels ) {
         errorText_ = "PulseAudio device does not support requested input channel count.";
@@ -444,7 +404,7 @@ bool RtApiPulse::probeDeviceOpen( unsigned int deviceId, StreamMode mode,
             buffer_attr.maxlength = bufferBytes * 4;
 
         pah->s_rec = pa_simple_new( NULL, streamName.c_str(), PA_STREAM_RECORD,
-                                    dev_input, "Record", &ss, &mapping, &buffer_attr, &error );
+                                    dev_name, "Record", &ss, &mapping, &buffer_attr, &error );
         if ( !pah->s_rec ) {
             errorText_ = "RtApiPulse::probeDeviceOpen: error connecting input to PulseAudio server.";
             return FAILURE;
@@ -466,7 +426,7 @@ bool RtApiPulse::probeDeviceOpen( unsigned int deviceId, StreamMode mode,
         }
 
         pah->s_play = pa_simple_new( NULL, streamName.c_str(), PA_STREAM_PLAYBACK,
-                                     dev_output, "Playback", &ss, &mapping, attr_ptr, &error );
+                                     dev_name, "Playback", &ss, &mapping, attr_ptr, &error );
         if ( !pah->s_play ) {
             errorText_ = "RtApiPulse::probeDeviceOpen: error connecting output to PulseAudio server.";
             return FAILURE;
@@ -625,6 +585,8 @@ void RtApiPulse::listDevices()
     int ret = 1;
     PaDeviceProbeInfo paProbeInfo{};
 
+    deviceList_.clear();
+
     OnExit onExit([&](){
         if (context)
             pa_context_unref(context);
@@ -647,7 +609,6 @@ void RtApiPulse::listDevices()
 
     paProbeInfo.paMainLoopApi = pa_mainloop_get_api( ml );
     paProbeInfo.currentDeviceId = &currentDeviceId_;
-    paProbeInfo.paDeviceList = &paDeviceList_;
     paProbeInfo.rtDeviceList = &deviceList_;
 
     if (!(context = pa_context_new_with_proplist( paProbeInfo.paMainLoopApi, NULL, NULL ))) {
@@ -679,21 +640,6 @@ void RtApiPulse::listDevices()
         errorText_ = errorStream_.str();
         error( RTAUDIO_WARNING );
         return;
-    }
-
-    // Check for devices that have been unplugged.
-    unsigned int m = 0;
-    for ( std::vector<RtAudio::DeviceInfo>::iterator it=deviceList_.begin(); it!=deviceList_.end(); ) {
-        for ( m=0; m<paProbeInfo.deviceNames.size(); m++ ) {
-            if ( (*it).name == paProbeInfo.deviceNames[m] ) {
-                ++it;
-                break;
-            }
-        }
-        if ( m == paProbeInfo.deviceNames.size() ) { // not found so remove it from our list
-            it = deviceList_.erase( it );
-            paDeviceList_.erase( paDeviceList_.begin() + distance(deviceList_.begin(), it ) );
-        }
     }
 }
 

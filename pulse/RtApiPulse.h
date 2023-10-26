@@ -21,14 +21,7 @@ public:
     // will most likely produce highly undesirable results!
     void callbackEvent( void );
 
-    struct PaDeviceInfo {
-        std::string sinkName;
-        std::string sourceName;
-    };
-
 private:
-    std::vector< PaDeviceInfo > paDeviceList_;
-
     void listDevices(void) override;
     bool probeSingleDeviceInfo(RtAudio::DeviceInfo& info) override;
 
