@@ -58,8 +58,8 @@ int main(int argc, char* argv[]) {
         cout<<"API not found"<<endl;
         return 1;
     }
-    if (api != RtAudio::Api::WINDOWS_ASIO && api != RtAudio::Api::LINUX_ALSA){
-        cout<<"ASIO or ALSA needed"<<endl;
+    if (api != RtAudio::Api::WINDOWS_ASIO && api != RtAudio::Api::LINUX_ALSA && api != RtAudio::Api::MACOSX_CORE){
+        cout<<"ASIO, CORE or ALSA needed"<<endl;
         return 1;
     }
     RtAudio dac(api, &errorCallback);

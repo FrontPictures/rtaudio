@@ -13,3 +13,6 @@ target_link_libraries(recordplay ${LIBRTAUDIO} ${LINKLIBS})
 
 add_executable(asioduplex asioduplex.cpp)
 target_link_libraries(asioduplex ${LIBRTAUDIO} ${LINKLIBS})
+
+add_executable(audioprobe audioprobe.cpp)
+target_link_libraries(audioprobe ${LIBRTAUDIO} ${LINKLIBS})

@@ -40,15 +40,14 @@ void listDevices( RtAudio& audio )
 
   std::cout << "\nAPI: " << RtAudio::getApiDisplayName(audio.getCurrentApi()) << std::endl;
 
-  std::vector<unsigned int> devices = audio.getDeviceIds();
+  auto devices = audio.getDeviceInfosNoProbe();
   std::cout << "\nFound " << devices.size() << " device(s) ...\n";
 
-  for (unsigned int i=0; i<devices.size(); i++) {
-    info = audio.getDeviceInfo( devices[i] );
+  for (auto &d : devices) {
+    info = audio.getDeviceInfoByBusID(d.busID);
 
     std::cout << "\nDevice Name = " << info.name << '\n';
     std::cout << "Device Bus ID = " << info.busID << '\n';
-    std::cout << "Device Index = " << i << '\n';
     std::cout << "Output Channels = " << info.outputChannels << '\n';
     std::cout << "Input Channels = " << info.inputChannels << '\n';
     std::cout << "Duplex Channels = " << info.duplexChannels << '\n';

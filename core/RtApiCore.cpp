@@ -125,75 +125,7 @@ RtApiCore :: ~RtApiCore()
     if ( stream_.state != STREAM_CLOSED ) closeStream();
 }
 
-unsigned int RtApiCore :: getDefaultOutputDevice( void )
-{
-    AudioDeviceID id;
-    UInt32 dataSize = sizeof( AudioDeviceID );
-    AudioObjectPropertyAddress property = { kAudioHardwarePropertyDefaultOutputDevice, kAudioObjectPropertyScopeGlobal, KAUDIOOBJECTPROPERTYELEMENT };
-    OSStatus result = AudioObjectGetPropertyData( kAudioObjectSystemObject, &property, 0, NULL, &dataSize, &id );
-    if ( result != noErr ) {
-        errorText_ = "RtApiCore::getDefaultOutputDevice: OS-X system error getting device.";
-        error( RTAUDIO_SYSTEM_ERROR );
-        return 0;
-    }
-
-    for ( unsigned int m=0; m<deviceIds_.size(); m++ ) {
-        if ( deviceIds_[m] == id ) {
-            if ( deviceList_[m].isDefaultOutput == false ) {
-                deviceList_[m].isDefaultOutput = true;
-                for ( unsigned int j=m+1; j<deviceIds_.size(); j++ ) {
-                    // make sure any remaining devices are not listed as the default
-                    deviceList_[j].isDefaultOutput = false;
-                }
-            }
-            return deviceList_[m].ID;
-        }
-        deviceList_[m].isDefaultOutput = false;
-    }
-
-    // If not found above, then do system probe of devices and try again.
-    probeDevices();
-    for ( unsigned int m=0; m<deviceIds_.size(); m++ ) {
-        if ( deviceIds_[m] == id ) return deviceList_[m].ID;
-    }
-    return 0;
-}
-
-unsigned int RtApiCore :: getDefaultInputDevice( void )
-{
-    AudioDeviceID id;
-    UInt32 dataSize = sizeof( AudioDeviceID );
-    AudioObjectPropertyAddress property = { kAudioHardwarePropertyDefaultInputDevice, kAudioObjectPropertyScopeGlobal, KAUDIOOBJECTPROPERTYELEMENT };
-    OSStatus result = AudioObjectGetPropertyData( kAudioObjectSystemObject, &property, 0, NULL, &dataSize, &id );
-    if ( result != noErr ) {
-        errorText_ = "RtApiCore::getDefaultInputDevice: OS-X system error getting device.";
-        error( RTAUDIO_SYSTEM_ERROR );
-        return 0;
-    }
-
-    for ( unsigned int m=0; m<deviceIds_.size(); m++ ) {
-        if ( deviceIds_[m] == id ) {
-            if ( deviceList_[m].isDefaultInput == false ) {
-                deviceList_[m].isDefaultInput = true;
-                for ( unsigned int j=m+1; j<deviceIds_.size(); j++ ) {
-                    // make sure any remaining devices are not listed as the default
-                    deviceList_[j].isDefaultInput = false;
-                }
-            }
-            return deviceList_[m].ID;
-        }
-        deviceList_[m].isDefaultInput = false;
-    }
-
-    // If not found above, then do system probe of devices and try again.
-    probeDevices();
-    for ( unsigned int m=0; m<deviceIds_.size(); m++ ) {
-        if ( deviceIds_[m] == id ) return deviceList_[m].ID;
-    }
-    return 0;
-}
-
-void RtApiCore :: probeDevices( void )
+void RtApiCore :: listDevices( void )
 {
     // See list of required functionality in RtApi::probeDevices().
 
@@ -287,16 +219,52 @@ void RtApiCore :: probeDevices( void )
     }
 }
 
+bool RtApiCore::probeSingleDeviceInfo(RtAudio::DeviceInfo &info)
+{
+    return true;
+}
+
+std::string GetSTDStringFromCString(CFStringRef str){
+    long length = CFStringGetLength(str);
+    char *mname = (char *)malloc(length * 3 + 1);
+#if defined( UNICODE ) || defined( _UNICODE )
+    CFStringGetCString(str, mname, length * 3 + 1, kCFStringEncodingUTF8);
+#else
+    CFStringGetCString(str, mname, length * 3 + 1, CFStringGetSystemEncoding());
+#endif
+    std::string res = mname;
+    free(mname);
+    return res;
+}
+
 bool RtApiCore :: probeDeviceInfo( AudioDeviceID id, RtAudio::DeviceInfo& info )
 {
     // Get the device name.
     info.name.erase();
-    CFStringRef cfname;
+    CFStringRef cfname = nullptr;
+    CFStringRef uid = nullptr;
     UInt32 dataSize = sizeof( CFStringRef );
-    AudioObjectPropertyAddress property = { kAudioObjectPropertyManufacturer,
+    OSStatus result = 0;
+
+    AudioObjectPropertyAddress property = { kAudioDevicePropertyDeviceUID,
                                            kAudioObjectPropertyScopeGlobal,
                                            KAUDIOOBJECTPROPERTYELEMENT };
-    OSStatus result = AudioObjectGetPropertyData( id, &property, 0, NULL, &dataSize, &cfname );
+    result = AudioObjectGetPropertyData( id, &property, 0, NULL, &dataSize, &uid );
+    if ( result != noErr ) {
+        errorStream_ << "RtApiCore::probeDeviceInfo: system error (" << getErrorCode( result ) << ") getting device manufacturer.";
+        errorText_ = errorStream_.str();
+        error( RTAUDIO_WARNING );
+        return false;
+    }
+    auto uid_str = GetSTDStringFromCString(uid);
+    info.busID = uid_str;
+    CFRelease( uid );
+
+    dataSize = sizeof( CFStringRef );
+    property = { kAudioObjectPropertyManufacturer,
+                                           kAudioObjectPropertyScopeGlobal,
+                                           KAUDIOOBJECTPROPERTYELEMENT };
+    result = AudioObjectGetPropertyData( id, &property, 0, NULL, &dataSize, &cfname );
     if ( result != noErr ) {
         errorStream_ << "RtApiCore::probeDeviceInfo: system error (" << getErrorCode( result ) << ") getting device manufacturer.";
         errorText_ = errorStream_.str();
@@ -304,17 +272,10 @@ bool RtApiCore :: probeDeviceInfo( AudioDeviceID id, RtAudio::DeviceInfo& info )
         return false;
     }
 
-    long length = CFStringGetLength(cfname);
-    char *mname = (char *)malloc(length * 3 + 1);
-#if defined( UNICODE ) || defined( _UNICODE )
-    CFStringGetCString(cfname, mname, length * 3 + 1, kCFStringEncodingUTF8);
-#else
-    CFStringGetCString(cfname, mname, length * 3 + 1, CFStringGetSystemEncoding());
-#endif
-    info.name.append( (const char *)mname, strlen(mname) );
+    auto mname_str = GetSTDStringFromCString(cfname);
+    info.name.append(mname_str);
     info.name.append( ": " );
     CFRelease( cfname );
-    free(mname);
 
     property.mSelector = kAudioObjectPropertyName;
     result = AudioObjectGetPropertyData( id, &property, 0, NULL, &dataSize, &cfname );
@@ -325,16 +286,9 @@ bool RtApiCore :: probeDeviceInfo( AudioDeviceID id, RtAudio::DeviceInfo& info )
         return false;
     }
 
-    length = CFStringGetLength(cfname);
-    char *name = (char *)malloc(length * 3 + 1);
-#if defined( UNICODE ) || defined( _UNICODE )
-    CFStringGetCString(cfname, name, length * 3 + 1, kCFStringEncodingUTF8);
-#else
-    CFStringGetCString(cfname, name, length * 3 + 1, CFStringGetSystemEncoding());
-#endif
-    info.name.append( (const char *)name, strlen(name) );
+    auto name_str = GetSTDStringFromCString(cfname);
+    info.name.append( name_str );
     CFRelease( cfname );
-    free(name);
 
     // Get the output stream "configuration".
     AudioBufferList	*bufferList = nil;
@@ -408,6 +362,13 @@ bool RtApiCore :: probeDeviceInfo( AudioDeviceID id, RtAudio::DeviceInfo& info )
     // If device opens for both playback and capture, we determine the channels.
     if ( info.outputChannels > 0 && info.inputChannels > 0 )
         info.duplexChannels = (info.outputChannels > info.inputChannels) ? info.inputChannels : info.outputChannels;
+
+    if (info.outputChannels){
+        info.supportsOutput = true;
+    }
+    if (info.inputChannels){
+        info.supportsInput = true;
+    }
 
     // Probe the device sample rates.
     bool isInput = false;
@@ -501,22 +462,41 @@ bool RtApiCore :: probeDeviceOpen( unsigned int deviceId, StreamMode mode, unsig
                                  RtAudioFormat format, unsigned int *bufferSize,
                                  RtAudio::StreamOptions *options )
 {
-    AudioDeviceID id = 0;
+    UInt32 dataSize = 0;
+    OSStatus result = 0;
+    std::string busID;
     for ( unsigned int m=0; m<deviceList_.size(); m++ ) {
         if ( deviceList_[m].ID == deviceId ) {
-            id = deviceIds_[m];
+            busID = deviceList_[m].busID;
             break;
         }
     }
 
-    if ( id == 0 ) {
+    if (busID.empty()) {
         errorText_ = "RtApiCore::probeDeviceOpen: the device ID was not found!";
         return FAILURE;
     }
 
-    AudioObjectPropertyAddress property = { kAudioHardwarePropertyDevices,
-                                           kAudioDevicePropertyScopeOutput,
+    AudioObjectPropertyAddress property = { kAudioHardwarePropertyTranslateUIDToDevice,
+                                           kAudioObjectPropertyScopeGlobal,
                                            KAUDIOOBJECTPROPERTYELEMENT };
+
+    CFStringRef cfbusid = nullptr;
+    cfbusid = CFStringCreateWithCString(nullptr, busID.c_str(), CFStringGetSystemEncoding());
+
+    AudioDeviceID id = 0;
+    dataSize = sizeof(AudioDeviceID);
+    result = AudioObjectGetPropertyData( kAudioObjectSystemObject, &property, sizeof(CFStringRef), &cfbusid, &dataSize, &id );
+    if ( result != noErr ) {
+        errorText_ = "RtApiCore::probeDevices: OS-X system error getting device IDs.";
+        error( RTAUDIO_SYSTEM_ERROR );
+        return FAILURE;
+    }
+    CFRelease(cfbusid);
+
+    property = { kAudioHardwarePropertyDevices,
+                kAudioDevicePropertyScopeOutput,
+                KAUDIOOBJECTPROPERTYELEMENT };
 
     // Setup for stream mode.
     if ( mode == INPUT ) {
@@ -525,9 +505,9 @@ bool RtApiCore :: probeDeviceOpen( unsigned int deviceId, StreamMode mode, unsig
 
     // Get the stream "configuration".
     AudioBufferList	*bufferList = nil;
-    UInt32 dataSize = 0;
+    dataSize = 0;
     property.mSelector = kAudioDevicePropertyStreamConfiguration;
-    OSStatus result = AudioObjectGetPropertyDataSize( id, &property, 0, NULL, &dataSize );
+    result = AudioObjectGetPropertyDataSize( id, &property, 0, NULL, &dataSize );
     if ( result != noErr || dataSize == 0 ) {
         errorStream_ << "RtApiCore::probeDeviceOpen: system error (" << getErrorCode( result ) << ") getting stream configuration info for device (" << deviceId << ").";
         errorText_ = errorStream_.str();
@@ -1101,12 +1081,6 @@ RtAudioErrorType RtApiCore :: startStream( void )
         return error( RTAUDIO_WARNING );
     }
 
-    /*
-  #if defined( HAVE_GETTIMEOFDAY )
-  gettimeofday( &stream_.lastTickTimestamp, NULL );
-  #endif
-  */
-
     OSStatus result = noErr;
     CoreHandle *handle = (CoreHandle *) stream_.apiHandle;
     if ( stream_.mode == OUTPUT || stream_.mode == DUPLEX ) {
@@ -1296,7 +1270,7 @@ bool RtApiCore :: callbackEvent( AudioDeviceID deviceId,
         else if ( handle->nStreams[0] == 1 ) {
             if ( stream_.doConvertBuffer[0] ) { // convert directly to CoreAudio stream buffer
                 convertBuffer( (char *) outBufferList->mBuffers[handle->iStream[0]].mData,
-                              stream_.userBuffer[0], stream_.convertInfo[0] );
+                              stream_.userBuffer[0], stream_.convertInfo[0], stream_.bufferSize, StreamMode::OUTPUT);
             }
             else { // copy from user buffer
                 memcpy( outBufferList->mBuffers[handle->iStream[0]].mData,
@@ -1307,7 +1281,7 @@ bool RtApiCore :: callbackEvent( AudioDeviceID deviceId,
         else { // fill multiple streams
             Float32 *inBuffer = (Float32 *) stream_.userBuffer[0];
             if ( stream_.doConvertBuffer[0] ) {
-                convertBuffer( stream_.deviceBuffer, stream_.userBuffer[0], stream_.convertInfo[0] );
+                convertBuffer( stream_.deviceBuffer, stream_.userBuffer[0], stream_.convertInfo[0], stream_.bufferSize, StreamMode::OUTPUT);
                 inBuffer = (Float32 *) stream_.deviceBuffer;
             }
 
@@ -1389,7 +1363,7 @@ bool RtApiCore :: callbackEvent( AudioDeviceID deviceId,
             if ( stream_.doConvertBuffer[1] ) { // convert directly from CoreAudio stream buffer
                 convertBuffer( stream_.userBuffer[1],
                               (char *) inBufferList->mBuffers[handle->iStream[1]].mData,
-                              stream_.convertInfo[1] );
+                              stream_.convertInfo[1], stream_.bufferSize, StreamMode::INPUT);
             }
             else { // copy to user buffer
                 memcpy( stream_.userBuffer[1],
@@ -1466,7 +1440,7 @@ bool RtApiCore :: callbackEvent( AudioDeviceID deviceId,
             if ( stream_.doConvertBuffer[1] ) { // convert from our internal "device" buffer
                 convertBuffer( stream_.userBuffer[1],
                               stream_.deviceBuffer,
-                              stream_.convertInfo[1] );
+                              stream_.convertInfo[1], stream_.bufferSize, StreamMode::INPUT);
             }
         }
     }

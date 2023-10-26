@@ -27,8 +27,6 @@ public:
     RtApiCore();
     ~RtApiCore();
     RtAudio::Api getCurrentApi( void ) override { return RtAudio::MACOSX_CORE; }
-    unsigned int getDefaultOutputDevice( void ) override;
-    unsigned int getDefaultInputDevice( void ) override;
     void closeStream( void ) override;
     RtAudioErrorType startStream( void ) override;
     RtAudioErrorType stopStream( void ) override;
@@ -43,7 +41,8 @@ public:
                        const AudioBufferList *outBufferList );
 
 private:
-    void probeDevices( void ) override;
+    void listDevices() override;
+    bool probeSingleDeviceInfo(RtAudio::DeviceInfo& info) override;
     bool probeDeviceInfo( AudioDeviceID id, RtAudio::DeviceInfo &info );
     bool probeDeviceOpen( unsigned int deviceId, StreamMode mode, unsigned int channels,
                          unsigned int firstChannel, unsigned int sampleRate,
