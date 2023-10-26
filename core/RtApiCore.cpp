@@ -17,13 +17,11 @@ struct CoreHandle {
     bool xrun[2];
     char *deviceBuffer;
     pthread_cond_t condition;
-    int drainCounter;       // Tracks callback counts when draining
-    bool internalDrain;     // Indicates if stop is initiated from callback or not.
     bool xrunListenerAdded[2];
     bool disconnectListenerAdded[2];
 
     CoreHandle()
-        :deviceBuffer(0), drainCounter(0), internalDrain(false) { nStreams[0] = 1; nStreams[1] = 1; id[0] = 0; id[1] = 0; procId[0] = 0; procId[1] = 0; xrun[0] = false; xrun[1] = false; xrunListenerAdded[0] = false; xrunListenerAdded[1] = false; disconnectListenerAdded[0] = false; disconnectListenerAdded[1] = false; }
+        :deviceBuffer(0) { nStreams[0] = 1; nStreams[1] = 1; id[0] = 0; id[1] = 0; procId[0] = 0; procId[1] = 0; xrun[0] = false; xrun[1] = false; xrunListenerAdded[0] = false; xrunListenerAdded[1] = false; disconnectListenerAdded[0] = false; disconnectListenerAdded[1] = false; }
 };
 
 // If a device used in an open stream is disconnected, close the stream.
@@ -1117,8 +1115,6 @@ RtAudioErrorType RtApiCore :: startStream( void )
         }
     }
 
-    handle->drainCounter = 0;
-    handle->internalDrain = false;
     stream_.state = STREAM_RUNNING;
 
 unlock:
@@ -1139,12 +1135,6 @@ RtAudioErrorType RtApiCore :: stopStream( void )
     OSStatus result = noErr;
     CoreHandle *handle = (CoreHandle *) stream_.apiHandle;
     if ( stream_.mode == OUTPUT || stream_.mode == DUPLEX ) {
-
-        if ( handle->drainCounter == 0 ) {
-            handle->drainCounter = 2;
-            pthread_cond_wait( &handle->condition, &stream_.mutex ); // block until signaled
-        }
-
 #if defined( MAC_OS_X_VERSION_10_5 ) && ( MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_5 )
         result = AudioDeviceStop( handle->id[0], handle->procId[0] );
 #else // deprecated behaviour
@@ -1188,7 +1178,6 @@ RtAudioErrorType RtApiCore :: abortStream( void )
     }
 
     CoreHandle *handle = (CoreHandle *) stream_.apiHandle;
-    handle->drainCounter = 2;
 
     stream_.state = STREAM_STOPPING;
     return stopStream();
@@ -1208,24 +1197,12 @@ bool RtApiCore :: callbackEvent( AudioDeviceID deviceId,
     CallbackInfo *info = (CallbackInfo *) &stream_.callbackInfo;
     CoreHandle *handle = (CoreHandle *) stream_.apiHandle;
 
-    // Check if we were draining the stream and signal is finished.
-    if ( handle->drainCounter > 3 ) {
-        ThreadHandle threadId;
-
-        stream_.state = STREAM_STOPPING;
-        if ( handle->internalDrain == true )
-            pthread_create( &threadId, NULL, coreStopStream, info );
-        else // external call to stopStream()
-            pthread_cond_signal( &handle->condition );
-        return SUCCESS;
-    }
-
     AudioDeviceID outputDevice = handle->id[0];
 
     // Invoke user callback to get fresh output data UNLESS we are
     // draining stream or duplex mode AND the input/output devices are
     // different AND this function is called for the input device.
-    if ( handle->drainCounter == 0 && ( stream_.mode != DUPLEX || deviceId == outputDevice ) ) {
+    if ( stream_.mode != DUPLEX || deviceId == outputDevice ) {
         RtAudioCallback callback = (RtAudioCallback) info->callback;
         double streamTime = getStreamTime();
         RtAudioStreamStatus status = 0;
@@ -1238,36 +1215,12 @@ bool RtApiCore :: callbackEvent( AudioDeviceID deviceId,
             handle->xrun[1] = false;
         }
 
-        int cbReturnValue = callback( stream_.userBuffer[0], stream_.userBuffer[1],
+        callback( stream_.userBuffer[0], stream_.userBuffer[1],
                                      stream_.bufferSize, streamTime, status, info->userData );
-        if ( cbReturnValue == 2 ) {
-            abortStream();
-            return SUCCESS;
-        }
-        else if ( cbReturnValue == 1 ) {
-            handle->drainCounter = 1;
-            handle->internalDrain = true;
-        }
     }
 
     if ( stream_.mode == OUTPUT || ( stream_.mode == DUPLEX && deviceId == outputDevice ) ) {
-
-        if ( handle->drainCounter > 1 ) { // write zeros to the output stream
-
-            if ( handle->nStreams[0] == 1 ) {
-                memset( outBufferList->mBuffers[handle->iStream[0]].mData,
-                       0,
-                       outBufferList->mBuffers[handle->iStream[0]].mDataByteSize );
-            }
-            else { // fill multiple streams with zeros
-                for ( unsigned int i=0; i<handle->nStreams[0]; i++ ) {
-                    memset( outBufferList->mBuffers[handle->iStream[0]+i].mData,
-                           0,
-                           outBufferList->mBuffers[handle->iStream[0]+i].mDataByteSize );
-                }
-            }
-        }
-        else if ( handle->nStreams[0] == 1 ) {
+        if ( handle->nStreams[0] == 1 ) {
             if ( stream_.doConvertBuffer[0] ) { // convert directly to CoreAudio stream buffer
                 convertBuffer( (char *) outBufferList->mBuffers[handle->iStream[0]].mData,
                               stream_.userBuffer[0], stream_.convertInfo[0], stream_.bufferSize, StreamMode::OUTPUT);
@@ -1347,12 +1300,6 @@ bool RtApiCore :: callbackEvent( AudioDeviceID deviceId,
                 }
             }
         }
-    }
-
-    // Don't bother draining input
-    if ( handle->drainCounter ) {
-        handle->drainCounter++;
-        goto unlock;
     }
 
     AudioDeviceID inputDevice;
