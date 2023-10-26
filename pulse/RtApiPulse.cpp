@@ -541,9 +541,9 @@ void RtApiPulse::closeStream( void )
 void RtApiPulse::callbackEvent( void )
 {
     PulseAudioHandle *pah = static_cast<PulseAudioHandle *>( stream_.apiHandle );
+    MutexRaii<StreamMutex> lock(stream_.mutex);
 
-    if ( stream_.state == STREAM_STOPPED ) {
-        MutexRaii<StreamMutex> lock(stream_.mutex);
+    if ( stream_.state == STREAM_STOPPED || stream_.state == STREAM_ERROR) {
         while ( !pah->runnable )
             pthread_cond_wait( &pah->runnable_cv, &stream_.mutex );
 
@@ -565,8 +565,6 @@ void RtApiPulse::callbackEvent( void )
     callback( stream_.userBuffer[OUTPUT], stream_.userBuffer[INPUT],
                                  stream_.bufferSize, streamTime, status,
                                  stream_.callbackInfo.userData );
-
-    MutexRaii<StreamMutex> lock(stream_.mutex);
     void *pulse_in = stream_.doConvertBuffer[INPUT] ? stream_.deviceBuffer : stream_.userBuffer[INPUT];
     void *pulse_out = stream_.doConvertBuffer[OUTPUT] ? stream_.deviceBuffer : stream_.userBuffer[OUTPUT];
 
@@ -591,6 +589,7 @@ void RtApiPulse::callbackEvent( void )
                             pa_strerror( pa_error ) << ".";
             errorText_ = errorStream_.str();
             error( RTAUDIO_WARNING );
+            stream_.state = STREAM_ERROR;
         }
     }
 
@@ -607,6 +606,7 @@ void RtApiPulse::callbackEvent( void )
                             pa_strerror( pa_error ) << ".";
             errorText_ = errorStream_.str();
             error( RTAUDIO_WARNING );
+            stream_.state = STREAM_ERROR;
         }
         if ( stream_.doConvertBuffer[INPUT] ) {
             convertBuffer( stream_.userBuffer[INPUT],
@@ -710,6 +710,8 @@ RtAudioErrorType RtApiPulse::startStream( void )
             errorText_ = "RtApiPulse::startStream(): the stream is already running!";
         else if ( stream_.state == STREAM_STOPPING || stream_.state == STREAM_CLOSED )
             errorText_ = "RtApiPulse::startStream(): the stream is stopping or closed!";
+        if ( stream_.state == STREAM_ERROR )
+            errorText_ = "RtApiPulse::startStream(): the stream is in error state!";
         return error( RTAUDIO_WARNING );
     }
 
@@ -728,6 +730,8 @@ RtAudioErrorType RtApiPulse::stopStream( void )
             errorText_ = "RtApiPulse::stopStream(): the stream is already stopped!";
         else if ( stream_.state == STREAM_CLOSED )
             errorText_ = "RtApiPulse::stopStream(): the stream is closed!";
+        if ( stream_.state == STREAM_ERROR )
+            errorText_ = "RtApiPulse::startStream(): the stream is in error state!";
         return error( RTAUDIO_WARNING );
     }
 
@@ -758,6 +762,8 @@ RtAudioErrorType RtApiPulse::abortStream( void )
             errorText_ = "RtApiPulse::abortStream(): the stream is already stopped!";
         else if ( stream_.state == STREAM_STOPPING || stream_.state == STREAM_CLOSED )
             errorText_ = "RtApiPulse::abortStream(): the stream is stopping or closed!";
+        if ( stream_.state == STREAM_ERROR )
+            errorText_ = "RtApiPulse::startStream(): the stream is in error state!";
         return error( RTAUDIO_WARNING );
     }
 
