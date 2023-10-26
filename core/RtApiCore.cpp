@@ -595,47 +595,6 @@ bool RtApiCore :: probeDeviceOpen( unsigned int deviceId, StreamMode mode, unsig
 
     free( bufferList );
 
-    // Determine the buffer size.
-    AudioValueRange	bufferRange;
-    dataSize = sizeof( AudioValueRange );
-    property.mSelector = kAudioDevicePropertyBufferFrameSizeRange;
-    result = AudioObjectGetPropertyData( id, &property, 0, NULL, &dataSize, &bufferRange );
-
-    if ( result != noErr ) {
-        errorStream_ << "RtApiCore::probeDeviceOpen: system error (" << getErrorCode( result ) << ") getting buffer size range for device (" << deviceId << ").";
-        errorText_ = errorStream_.str();
-        return FAILURE;
-    }
-
-    if ( bufferRange.mMinimum > *bufferSize ) *bufferSize = (unsigned int) bufferRange.mMinimum;
-    else if ( bufferRange.mMaximum < *bufferSize ) *bufferSize = (unsigned int) bufferRange.mMaximum;
-    if ( options && options->flags & RTAUDIO_MINIMIZE_LATENCY ) *bufferSize = (unsigned int) bufferRange.mMinimum;
-
-    // Set the buffer size.  For multiple streams, I'm assuming we only
-    // need to make this setting for the master channel.
-    UInt32 theSize = (UInt32) *bufferSize;
-    dataSize = sizeof( UInt32 );
-    property.mSelector = kAudioDevicePropertyBufferFrameSize;
-    result = AudioObjectSetPropertyData( id, &property, 0, NULL, dataSize, &theSize );
-
-    if ( result != noErr ) {
-        errorStream_ << "RtApiCore::probeDeviceOpen: system error (" << getErrorCode( result ) << ") setting the buffer size for device (" << deviceId << ").";
-        errorText_ = errorStream_.str();
-        return FAILURE;
-    }
-
-    // If attempting to setup a duplex stream, the bufferSize parameter
-    // MUST be the same in both directions!
-    *bufferSize = theSize;
-    if ( stream_.mode == OUTPUT && mode == INPUT && *bufferSize != stream_.bufferSize ) {
-        errorStream_ << "RtApiCore::probeDeviceOpen: system error setting buffer size for duplex stream on device (" << deviceId << ").";
-        errorText_ = errorStream_.str();
-        return FAILURE;
-    }
-
-    stream_.bufferSize = *bufferSize;
-    stream_.nBuffers = 1;
-
     // Try to set "hog" mode ... it's not clear to me this is working.
     if ( options && options->flags & RTAUDIO_HOG_DEVICE ) {
         pid_t hog_pid;
@@ -697,6 +656,47 @@ bool RtApiCore :: probeDeviceOpen( unsigned int deviceId, StreamMode mode, unsig
             return FAILURE;
         }
     }
+
+    // Determine the buffer size.
+    AudioValueRange	bufferRange;
+    dataSize = sizeof( AudioValueRange );
+    property.mSelector = kAudioDevicePropertyBufferFrameSizeRange;
+    result = AudioObjectGetPropertyData( id, &property, 0, NULL, &dataSize, &bufferRange );
+
+    if ( result != noErr ) {
+        errorStream_ << "RtApiCore::probeDeviceOpen: system error (" << getErrorCode( result ) << ") getting buffer size range for device (" << deviceId << ").";
+        errorText_ = errorStream_.str();
+        return FAILURE;
+    }
+
+    if ( bufferRange.mMinimum > *bufferSize ) *bufferSize = (unsigned int) bufferRange.mMinimum;
+    else if ( bufferRange.mMaximum < *bufferSize ) *bufferSize = (unsigned int) bufferRange.mMaximum;
+    if ( options && options->flags & RTAUDIO_MINIMIZE_LATENCY ) *bufferSize = (unsigned int) bufferRange.mMinimum;
+
+    // Set the buffer size.  For multiple streams, I'm assuming we only
+    // need to make this setting for the master channel.
+    UInt32 theSize = (UInt32) *bufferSize;
+    dataSize = sizeof( UInt32 );
+    property.mSelector = kAudioDevicePropertyBufferFrameSize;
+    result = AudioObjectSetPropertyData( id, &property, 0, NULL, dataSize, &theSize );
+
+    if ( result != noErr ) {
+        errorStream_ << "RtApiCore::probeDeviceOpen: system error (" << getErrorCode( result ) << ") setting the buffer size for device (" << deviceId << ").";
+        errorText_ = errorStream_.str();
+        return FAILURE;
+    }
+
+    // If attempting to setup a duplex stream, the bufferSize parameter
+    // MUST be the same in both directions!
+    *bufferSize = theSize;
+    if ( stream_.mode == OUTPUT && mode == INPUT && *bufferSize != stream_.bufferSize ) {
+        errorStream_ << "RtApiCore::probeDeviceOpen: system error setting buffer size for duplex stream on device (" << deviceId << ").";
+        errorText_ = errorStream_.str();
+        return FAILURE;
+    }
+
+    stream_.bufferSize = *bufferSize;
+    stream_.nBuffers = 1;
 
     // Now set the stream format for all streams.  Also, check the
     // physical format of the device and change that if necessary.
