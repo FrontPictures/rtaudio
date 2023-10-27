@@ -39,6 +39,7 @@ public:
     bool callbackEvent( AudioDeviceID deviceId,
                        const AudioBufferList *inBufferList,
                        const AudioBufferList *outBufferList );
+    void signalError();
 
 private:
     void listDevices() override;

@@ -35,7 +35,7 @@ static OSStatus streamDisconnectListener( AudioObjectID /*id*/,
             CallbackInfo *info = (CallbackInfo *) infoPointer;
             RtApiCore *object = (RtApiCore *) info->object;
             info->deviceDisconnected = true;
-            object->closeStream();
+            object->signalError();
             return kAudioHardwareUnspecifiedError;
         }
     }
@@ -78,20 +78,6 @@ static OSStatus xrunListener( AudioObjectID /*inDevice*/,
     }
 
     return kAudioHardwareNoError;
-}
-
-// This function will be called by a spawned thread when the user
-// callback function signals that the stream should be stopped or
-// aborted.  It is better to handle it this way because the
-// callbackEvent() function probably should return before the
-// AudioDeviceStop() function is called.
-static void *coreStopStream( void *ptr )
-{
-    CallbackInfo *info = (CallbackInfo *) ptr;
-    RtApiCore *object = (RtApiCore *) info->object;
-
-    object->stopStream();
-    pthread_exit( NULL );
 }
 
 }
@@ -1076,6 +1062,8 @@ RtAudioErrorType RtApiCore :: startStream( void )
             errorText_ = "RtApiCore::startStream(): the stream is already running!";
         else if ( stream_.state == STREAM_STOPPING || stream_.state == STREAM_CLOSED )
             errorText_ = "RtApiCore::startStream(): the stream is stopping or closed!";
+        else if ( stream_.state == STREAM_ERROR )
+            errorText_ = "RtApiCore::startStream(): the stream is in error state!";
         return error( RTAUDIO_WARNING );
     }
 
@@ -1091,7 +1079,7 @@ RtAudioErrorType RtApiCore :: startStream( void )
         if ( result != noErr ) {
             errorStream_ << "RtApiCore::startStream: system error (" << getErrorCode( result ) << ") starting callback procedure on device (" << stream_.deviceId[0] << ").";
             errorText_ = errorStream_.str();
-            goto unlock;
+            return error( RTAUDIO_SYSTEM_ERROR );
         }
     }
 
@@ -1111,15 +1099,12 @@ RtAudioErrorType RtApiCore :: startStream( void )
         if ( result != noErr ) {
             errorStream_ << "RtApiCore::startStream: system error starting input callback procedure on device (" << stream_.deviceId[1] << ").";
             errorText_ = errorStream_.str();
-            goto unlock;
+            return error( RTAUDIO_SYSTEM_ERROR );
         }
     }
 
     stream_.state = STREAM_RUNNING;
-
-unlock:
-    if ( result == noErr ) return RTAUDIO_NO_ERROR;
-    return error( RTAUDIO_SYSTEM_ERROR );
+    return RTAUDIO_NO_ERROR;
 }
 
 RtAudioErrorType RtApiCore :: stopStream( void )
@@ -1129,6 +1114,8 @@ RtAudioErrorType RtApiCore :: stopStream( void )
             errorText_ = "RtApiCore::stopStream(): the stream is already stopped!";
         else if ( stream_.state == STREAM_CLOSED )
             errorText_ = "RtApiCore::stopStream(): the stream is closed!";
+        else if ( stream_.state == STREAM_ERROR )
+            errorText_ = "RtApiCore::startStream(): the stream is in error state!";
         return error( RTAUDIO_WARNING );
     }
 
@@ -1143,7 +1130,7 @@ RtAudioErrorType RtApiCore :: stopStream( void )
         if ( result != noErr ) {
             errorStream_ << "RtApiCore::stopStream: system error (" << getErrorCode( result ) << ") stopping callback procedure on device (" << stream_.deviceId[0] << ").";
             errorText_ = errorStream_.str();
-            goto unlock;
+            return error( RTAUDIO_SYSTEM_ERROR );
         }
     }
 
@@ -1156,15 +1143,12 @@ RtAudioErrorType RtApiCore :: stopStream( void )
         if ( result != noErr ) {
             errorStream_ << "RtApiCore::stopStream: system error (" << getErrorCode( result ) << ") stopping input callback procedure on device (" << stream_.deviceId[1] << ").";
             errorText_ = errorStream_.str();
-            goto unlock;
+            return error( RTAUDIO_SYSTEM_ERROR );
         }
     }
 
     stream_.state = STREAM_STOPPED;
-
-unlock:
-    if ( result == noErr ) return RTAUDIO_NO_ERROR;
-    return error( RTAUDIO_SYSTEM_ERROR );
+    return RTAUDIO_NO_ERROR;
 }
 
 RtAudioErrorType RtApiCore :: abortStream( void )
@@ -1174,6 +1158,8 @@ RtAudioErrorType RtApiCore :: abortStream( void )
             errorText_ = "RtApiCore::abortStream(): the stream is already stopped!";
         else if ( stream_.state == STREAM_STOPPING || stream_.state == STREAM_CLOSED )
             errorText_ = "RtApiCore::abortStream(): the stream is stopping or closed!";
+        else if ( stream_.state == STREAM_ERROR )
+            errorText_ = "RtApiCore::startStream(): the stream is in error state!";
         return error( RTAUDIO_WARNING );
     }
 
@@ -1187,7 +1173,7 @@ bool RtApiCore :: callbackEvent( AudioDeviceID deviceId,
                                const AudioBufferList *inBufferList,
                                const AudioBufferList *outBufferList )
 {
-    if ( stream_.state == STREAM_STOPPED || stream_.state == STREAM_STOPPING ) return SUCCESS;
+    if ( stream_.state == STREAM_ERROR || stream_.state == STREAM_STOPPED || stream_.state == STREAM_STOPPING ) return SUCCESS;
     if ( stream_.state == STREAM_CLOSED ) {
         errorText_ = "RtApiCore::callbackEvent(): the stream is closed ... this shouldn't happen!";
         error( RTAUDIO_WARNING );
@@ -1392,8 +1378,6 @@ bool RtApiCore :: callbackEvent( AudioDeviceID deviceId,
         }
     }
 
-unlock:
-
     // Make sure to only tick duplex stream time once if using two devices
     if ( stream_.mode == DUPLEX ) {
         if ( handle->id[0] == handle->id[1] ) // same device, only one callback
@@ -1404,6 +1388,11 @@ unlock:
         RtApi::tickStreamTime(); // input or output stream only
 
     return SUCCESS;
+}
+
+void RtApiCore::signalError()
+{
+    stream_.state = StreamState::STREAM_ERROR;
 }
 
 const char* RtApiCore :: getErrorCode( OSStatus code )
