@@ -975,7 +975,7 @@ void RtApiWasapi::wasapiThread()
                 userBufferInput = stream_.userBuffer[INPUT];
                 convertBuffer(stream_.userBuffer[modeDirection],
                     (char*)streamBuffer,
-                    stream_.convertInfo[modeDirection], bufferFrameAvailableCount);
+                    stream_.convertInfo[modeDirection], bufferFrameAvailableCount, StreamMode::INPUT);
             }
             else {
                 userBufferInput = streamBuffer;
@@ -1001,7 +1001,7 @@ void RtApiWasapi::wasapiThread()
                 // Convert callback buffer to stream format
                 convertBuffer((char*)streamBuffer,
                     stream_.userBuffer[modeDirection],
-                    stream_.convertInfo[modeDirection], bufferFrameAvailableCount);
+                    stream_.convertInfo[modeDirection], bufferFrameAvailableCount, StreamMode::OUTPUT);
             }
             hr = renderClient->ReleaseBuffer(bufferFrameAvailableCount, 0);
             if (FAILED(hr)) {
