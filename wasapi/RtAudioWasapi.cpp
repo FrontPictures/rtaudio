@@ -983,16 +983,13 @@ void RtApiWasapi::wasapiThread()
         }
 
 
-        callbackResult = callback(userBufferOutput,
+        callback(userBufferOutput,
             userBufferInput,
             bufferFrameAvailableCount,
             getStreamTime(),
             captureFlags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY ? RTAUDIO_INPUT_OVERFLOW : 0,
             stream_.callbackInfo.userData);
         RtApi::tickStreamTime();
-        if (callbackResult == 1 || callbackResult == 2) {
-            //stop it
-        }
 
 
         if (!isInput) {

@@ -51,6 +51,8 @@ void listDevices( RtAudio& audio )
     std::cout << "Output Channels = " << info.outputChannels << '\n';
     std::cout << "Input Channels = " << info.inputChannels << '\n';
     std::cout << "Duplex Channels = " << info.duplexChannels << '\n';
+    std::cout << "Supports input: " << (info.supportsInput ? "true" : "false") << '\n';
+    std::cout << "Supports output: " << (info.supportsOutput ? "true" : "false") << '\n';
     if ( info.isDefaultOutput ) std::cout << "This is the default output device.\n";
     else std::cout << "This is NOT the default output device.\n";
     if ( info.isDefaultInput ) std::cout << "This is the default input device.\n";
