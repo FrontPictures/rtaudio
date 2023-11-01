@@ -1,4 +1,6 @@
 #include "RtAudio.h"
+#include "RtAudio.h"
+#include "RtAudio.h"
 /************************************************************************/
 /*! \class RtAudio
     \brief Realtime audio i/o C++ classes.
@@ -322,6 +324,46 @@ RtAudioErrorType RtAudio :: openStream( RtAudio::StreamParameters *outputParamet
                              sampleRate, bufferFrames, callback,
                              userData, options );
 }
+RtApiEnumerator::RtApiEnumerator() {
+
+}
+RtApiEnumerator::~RtApiEnumerator() {
+
+}
+
+RtAudioErrorType RtApiEnumerator::error(RtAudioErrorType type, const std::string& message)
+{
+    errorStream_.str(""); // clear the ostringstream to avoid repeated messages
+
+    // Don't output warnings if showWarnings_ is false
+    if (type == RTAUDIO_WARNING && showWarnings_ == false) return type;
+
+    if (errorCallback_) {
+        //const std::string errorMessage = errorText_;
+        //errorCallback_( type, errorMessage );
+        errorCallback_(type, message);
+    }
+    else
+        std::cerr << '\n' << message << "\n\n";
+    return type;
+}
+
+RtAudioErrorType RtApiEnumerator::error(RtAudioErrorType type)
+{
+    errorStream_.str(""); // clear the ostringstream to avoid repeated messages
+
+    // Don't output warnings if showWarnings_ is false
+    if ( type == RTAUDIO_WARNING && showWarnings_ == false ) return type;
+
+    if ( errorCallback_ ) {
+        //const std::string errorMessage = errorText_;
+        //errorCallback_( type, errorMessage );
+        errorCallback_( type, errorText_ );
+    }
+    else
+        std::cerr << '\n' << errorText_ << "\n\n";
+    return type;
+}
 
 // *************************************************** //
 //
@@ -382,29 +424,14 @@ RtAudioErrorType RtApi :: openStream( RtAudio::StreamParameters *oParams,
   unsigned int m, oChannels = 0;
   if ( oParams ) {
     oChannels = oParams->nChannels;
-    // Verify that the oParams->deviceId is found in our list
-    for ( m=0; m<deviceList_.size(); m++ ) {
-      if ( deviceList_[m].ID == oParams->deviceId ) break;
-    }
-    if ( m == deviceList_.size() ) {
-      errorText_ = "RtApi::openStream: output device ID is invalid.";
-      return error( RTAUDIO_INVALID_PARAMETER );
-    }
   }
 
   unsigned int iChannels = 0;
   if ( iParams ) {
     iChannels = iParams->nChannels;
-    for ( m=0; m<deviceList_.size(); m++ ) {
-      if ( deviceList_[m].ID == iParams->deviceId ) break;
-    }
-    if ( m == deviceList_.size() ) {
-      errorText_ = "RtApi::openStream: input device ID is invalid.";
-      return error( RTAUDIO_INVALID_PARAMETER );
-    }
   }
 
-  bool result;
+  bool result = false;
 
   if ( oChannels > 0 ) {
 
@@ -458,7 +485,7 @@ void RtApi :: closeStream( void )
   return;
 }
 
-bool RtApi :: probeDeviceOpen( unsigned int /*deviceId*/, StreamMode /*mode*/, unsigned int /*channels*/,
+bool RtApi :: probeDeviceOpen( const std::string& /*deviceId*/, StreamMode /*mode*/, unsigned int /*channels*/,
                                unsigned int /*firstChannel*/, unsigned int /*sampleRate*/,
                                RtAudioFormat /*format*/, unsigned int * /*bufferSize*/,
                                RtAudio::StreamOptions * /*options*/ )

@@ -239,7 +239,7 @@ static void bufferSwitch(long index, ASIOBool /*processNow*/)
     object->callbackEvent(index);
 }
 
-bool RtApiAsio::probeDeviceOpen(unsigned int deviceId, StreamMode mode, unsigned int channels,
+bool RtApiAsio::probeDeviceOpen(const std::string& deviceId, StreamMode mode, unsigned int channels,
     unsigned int firstChannel, unsigned int sampleRate,
     RtAudioFormat format, unsigned int* bufferSize,
     RtAudio::StreamOptions* options)
@@ -254,7 +254,7 @@ bool RtApiAsio::probeDeviceOpen(unsigned int deviceId, StreamMode mode, unsigned
 
     std::string driverName;
     for (unsigned int m = 0; m < deviceList_.size(); m++) {
-        if (deviceList_[m].ID == deviceId) {
+        if (deviceList_[m].busID == deviceId) {
             driverName = deviceList_[m].name;
             break;
         }

@@ -21,6 +21,8 @@
 #include "utils.h"
 #include "WasapiNotificationHandler.h"
 
+
+
 class RtApiWasapi : public RtApi
 {
 public:
@@ -47,7 +49,7 @@ private:
     bool probeSingleDeviceInfo(RtAudio::DeviceInfo& info) override;
 
     bool probeDeviceName(RtAudio::DeviceInfo& info, IMMDevice* device);
-    bool probeDeviceOpen(unsigned int deviceId, StreamMode mode, unsigned int channels,
+    bool probeDeviceOpen(const std::string& deviceId, StreamMode mode, unsigned int channels,
         unsigned int firstChannel, unsigned int sampleRate,
         RtAudioFormat format, unsigned int* bufferSize,
         RtAudio::StreamOptions* options) override;

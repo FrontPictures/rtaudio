@@ -7,6 +7,7 @@
 #include <functional>
 #include "OnExit.hpp"
 #include <cassert>
+#include "WasapiCommon.h"
 
 namespace {
 #ifndef INITGUID
@@ -144,25 +145,7 @@ namespace {
             renderFormat(nullptr, CoTaskMemFree),
             bufferDuration(0),
             isInput(true) {}
-    };
-
-    class PROPVARIANT_Raii {
-    public:
-        PROPVARIANT_Raii() {
-            PropVariantInit(&mPropVal);
-        }
-        ~PROPVARIANT_Raii() {
-            PropVariantClear(&mPropVal);
-        }
-        PROPVARIANT* operator&() {
-            return &mPropVal;
-        }
-        const PROPVARIANT get() const {
-            return mPropVal;
-        }
-    private:
-        PROPVARIANT mPropVal;
-    };
+    };    
 
     class COMLibrary_Raii {
     public:
@@ -580,7 +563,7 @@ RtAudioErrorType RtApiWasapi::unregisterExtraCallback()
     return RTAUDIO_NO_ERROR;
 }
 
-bool RtApiWasapi::probeDeviceOpen(unsigned int deviceId, StreamMode mode, unsigned int channels,
+bool RtApiWasapi::probeDeviceOpen(const std::string& deviceId, StreamMode mode, unsigned int channels,
     unsigned int firstChannel, unsigned int sampleRate,
     RtAudioFormat format, unsigned int* bufferSize,
     RtAudio::StreamOptions* options)
@@ -606,7 +589,6 @@ bool RtApiWasapi::probeDeviceOpen(unsigned int deviceId, StreamMode mode, unsign
     unsigned int bufferBytes;
     stream_.state = STREAM_STOPPED;
     bool isInput = false;
-    std::string id;
     AUDCLNT_SHAREMODE shareMode = AUDCLNT_SHAREMODE_SHARED;
     Microsoft::WRL::ComPtr<IAudioClient> audioClient;
     Microsoft::WRL::ComPtr<IAudioRenderClient> renderClient;
@@ -615,15 +597,14 @@ bool RtApiWasapi::probeDeviceOpen(unsigned int deviceId, StreamMode mode, unsign
 
     unsigned int deviceIdx;
     for (deviceIdx = 0; deviceIdx < deviceList_.size(); deviceIdx++) {
-        if (deviceList_[deviceIdx].ID == deviceId) {
-            id = deviceList_[deviceIdx].busID;
+        if (deviceList_[deviceIdx].busID == deviceId) {
             if (deviceList_[deviceIdx].supportsInput) isInput = true;
             break;
         }
     }
 
     errorText_.clear();
-    if (id.empty()) {
+    if (deviceId.empty()) {
         errorText_ = "RtApiWasapi::probeDeviceOpen: the device ID was not found!";
         MUTEX_UNLOCK(&stream_.mutex);
         return FAILURE;
@@ -637,7 +618,7 @@ bool RtApiWasapi::probeDeviceOpen(unsigned int deviceId, StreamMode mode, unsign
 
     // Get the device pointer from the device Id
     errorType = RTAUDIO_DRIVER_ERROR;
-    std::wstring temp = std::wstring(id.begin(), id.end());
+    std::wstring temp = std::wstring(deviceId.begin(), deviceId.end());
     HRESULT hr = deviceEnumerator_->GetDevice((LPWSTR)temp.c_str(), &devicePtr);
     if (FAILED(hr)) {
         errorText_ = "RtApiWasapi::probeDeviceOpen: Unable to retrieve device handle.";

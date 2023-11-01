@@ -90,7 +90,7 @@ bool capture_audio(AudioParamsCapture params) {
     RtAudio::StreamParameters iParams;
     iParams.nChannels = params.channels;
     iParams.firstChannel = 0;
-    iParams.deviceId = info.ID;
+    iParams.deviceId = info.busID;
     RtAudio::StreamOptions options;
     options.flags |= RTAUDIO_SCHEDULE_REALTIME;
     if (params.hog) {
@@ -128,7 +128,7 @@ bool playback_audio(AudioParamsCapture params) {
     RtAudio::StreamParameters oParams;
     oParams.nChannels = params.channels;
     oParams.firstChannel = 0;
-    oParams.deviceId = info.ID;
+    oParams.deviceId = info.busID;
     RtAudio::StreamOptions options;
     options.flags |= RTAUDIO_SCHEDULE_REALTIME;
     if (params.hog) {

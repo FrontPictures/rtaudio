@@ -313,7 +313,7 @@ class RTAUDIO_DLL_PUBLIC RtAudio
   //! The structure for specifying input or output stream parameters.
   struct StreamParameters {
     //std::string deviceName{};     /*!< Device name from device list. */
-    unsigned int deviceId{};     /*!< Device id as provided by getDeviceIds(). */
+    std::string deviceId{};     /*!< Device id as provided by getDeviceIds(). */
     unsigned int nChannels{};    /*!< Number of channels. */
     unsigned int firstChannel{}; /*!< First channel index on device (default = 0). */
   };
@@ -717,6 +717,25 @@ class S24 {
 
 #include <sstream>
 
+class RTAUDIO_DLL_PUBLIC RtApiEnumerator {
+public:
+    RtApiEnumerator();
+    virtual ~RtApiEnumerator();
+    virtual RtAudio::Api getCurrentApi( void ) = 0;
+    virtual std::vector<RtAudio::DeviceInfo> listDevices(void) = 0;
+
+    void setErrorCallback( RtAudioErrorCallback errorCallback ) { errorCallback_ = errorCallback; }
+    void showWarnings( bool value ) { showWarnings_ = value; }
+protected:
+    std::ostringstream errorStream_;
+    std::string errorText_;
+    RtAudioErrorCallback errorCallback_ = nullptr;
+    RtAudioErrorType error( RtAudioErrorType type, const std::string& message);
+    RtAudioErrorType error( RtAudioErrorType type );
+private:
+    bool showWarnings_ = false;
+};
+
 class RTAUDIO_DLL_PUBLIC RtApi
 {
 public:
@@ -781,7 +800,7 @@ protected:
 
   // A protected structure for audio streams.
   struct RtApiStream {
-    unsigned int deviceId[2];  // Playback and record, respectively.
+    std::string deviceId[2];  // Playback and record, respectively.
     void *apiHandle;           // void pointer for API specific stream handle information
     StreamMode mode;           // OUTPUT, INPUT, or DUPLEX.
     StreamState state;         // STOPPED, RUNNING, or CLOSED
@@ -846,7 +865,7 @@ protected:
     "warning" message is reported and FAILURE is returned. A
     successful probe is indicated by a return value of SUCCESS.
   */
-  virtual bool probeDeviceOpen( unsigned int deviceId, StreamMode mode, unsigned int channels,
+  virtual bool probeDeviceOpen( const std::string& deviceId, StreamMode mode, unsigned int channels,
                                 unsigned int firstChannel, unsigned int sampleRate,
                                 RtAudioFormat format, unsigned int *bufferSize,
                                 RtAudio::StreamOptions *options );

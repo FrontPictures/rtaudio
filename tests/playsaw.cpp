@@ -95,7 +95,7 @@ bool playsin(RtAudio& dac, const RtAudio::DeviceInfo& info, int channels, unsign
     RtAudio::StreamParameters oParams;
     oParams.nChannels = channels;
     oParams.firstChannel = 0;
-    oParams.deviceId = info.ID;
+    oParams.deviceId = info.busID;
 
     RtAudio::StreamOptions options;
     options.flags |= RTAUDIO_SCHEDULE_REALTIME;

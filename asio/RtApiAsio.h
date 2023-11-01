@@ -61,7 +61,7 @@ private:
     bool probeSingleDeviceInfo(RtAudio::DeviceInfo& info) override;
     void listDevices(void) override;
     void listAsioDevices();
-    bool probeDeviceOpen(unsigned int device, StreamMode mode, unsigned int channels,
+    bool probeDeviceOpen(const std::string& device, StreamMode mode, unsigned int channels,
         unsigned int firstChannel, unsigned int sampleRate,
         RtAudioFormat format, unsigned int* bufferSize,
         RtAudio::StreamOptions* options) override;

@@ -126,12 +126,12 @@ int main(int argc, char* argv[]) {
     RtAudio::StreamParameters oParams;
     oParams.nChannels = channels;
     oParams.firstChannel = 0;
-    oParams.deviceId = selectedDevice.ID;
+    oParams.deviceId = selectedDevice.busID;
 
     RtAudio::StreamParameters iParams;
     iParams.nChannels = channels;
     iParams.firstChannel = 0;
-    iParams.deviceId = selectedDevice.ID;
+    iParams.deviceId = selectedDevice.busID;
 
     UserData userData;
     userData.channels = channels;
