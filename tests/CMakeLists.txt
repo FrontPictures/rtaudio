@@ -16,3 +16,6 @@ target_link_libraries(asioduplex ${LIBRTAUDIO} ${LINKLIBS})
 
 add_executable(audioprobe audioprobe.cpp)
 target_link_libraries(audioprobe ${LIBRTAUDIO} ${LINKLIBS})
+
+add_executable(audioevents audioevents.cpp)
+target_link_libraries(audioevents ${LIBRTAUDIO} ${LINKLIBS})
