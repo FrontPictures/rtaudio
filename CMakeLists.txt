@@ -182,7 +182,9 @@ if (RTAUDIO_API_WASAPI)
   list(APPEND API_LIST "wasapi")
   list(APPEND rtaudio_SOURCES "wasapi/RtAudioWasapi.cpp" "wasapi/RtAudioWasapi.h" "wasapi/WasapiResampler.cpp"
     "wasapi/WasapiResampler.h" "wasapi/WasapiBuffer.cpp" "wasapi/WasapiBuffer.h" "wasapi/WasapiNotificationHandler.cpp"
-    "wasapi/WasapiNotificationHandler.h" "wasapi/RtApiWasapiEnumerator.cpp" "wasapi/RtApiWasapiEnumerator.h" "wasapi/WasapiCommon.h")
+    "wasapi/WasapiNotificationHandler.h" "wasapi/RtApiWasapiEnumerator.cpp" "wasapi/RtApiWasapiEnumerator.h" "wasapi/WasapiCommon.h"
+    "wasapi/WasapiCommon.cpp" "wasapi/RtApiWasapiProber.cpp" "wasapi/RtApiWasapiProber.h" "wasapi/RtApiWasapiStream.cpp" "wasapi/RtApiWasapiStream.h"
+    "wasapi/RtApiWasapiSystemCallback.cpp" "wasapi/RtApiWasapiSystemCallback.h" "wasapi/RtApiWasapiStreamFactory.cpp" "wasapi/RtApiWasapiStreamFactory.h")
 endif()
 
 # Windows libs

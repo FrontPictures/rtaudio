@@ -1,6 +1,7 @@
 #include "RtAudio.h"
 #include "RtAudio.h"
 #include "RtAudio.h"
+#include "RtAudio.h"
 /************************************************************************/
 /*! \class RtAudio
     \brief Realtime audio i/o C++ classes.
@@ -324,17 +325,11 @@ RtAudioErrorType RtAudio :: openStream( RtAudio::StreamParameters *outputParamet
                              sampleRate, bufferFrames, callback,
                              userData, options );
 }
-RtApiEnumerator::RtApiEnumerator() {
 
-}
-RtApiEnumerator::~RtApiEnumerator() {
-
-}
-
-RtAudioErrorType RtApiEnumerator::error(RtAudioErrorType type, const std::string& message)
+RtAudioErrorType ErrorBase::error(RtAudioErrorType type, const std::string& message)
 {
     errorStream_.str(""); // clear the ostringstream to avoid repeated messages
-
+    errorText_ = message;
     // Don't output warnings if showWarnings_ is false
     if (type == RTAUDIO_WARNING && showWarnings_ == false) return type;
 
@@ -348,17 +343,31 @@ RtAudioErrorType RtApiEnumerator::error(RtAudioErrorType type, const std::string
     return type;
 }
 
-RtAudioErrorType RtApiEnumerator::error(RtAudioErrorType type)
+RtAudioErrorType ErrorBase::errorThread(RtAudioErrorType type, const std::string& message)
+{
+    if (type == RTAUDIO_WARNING && showWarnings_ == false) return type;
+
+    if (errorCallback_) {
+        //const std::string errorMessage = errorText_;
+        //errorCallback_( type, errorMessage );
+        errorCallback_(type, message);
+    }
+    else
+        std::cerr << '\n' << message << "\n\n";
+    return type;
+}
+
+RtAudioErrorType ErrorBase::error(RtAudioErrorType type)
 {
     errorStream_.str(""); // clear the ostringstream to avoid repeated messages
 
     // Don't output warnings if showWarnings_ is false
-    if ( type == RTAUDIO_WARNING && showWarnings_ == false ) return type;
+    if (type == RTAUDIO_WARNING && showWarnings_ == false) return type;
 
-    if ( errorCallback_ ) {
+    if (errorCallback_) {
         //const std::string errorMessage = errorText_;
         //errorCallback_( type, errorMessage );
-        errorCallback_( type, errorText_ );
+        errorCallback_(type, errorText_);
     }
     else
         std::cerr << '\n' << errorText_ << "\n\n";
@@ -523,6 +532,20 @@ RtAudioErrorType RtApi::openAsioControlPanel(void) {
     return RTAUDIO_UNKNOWN_ERROR;
 }
 
+unsigned int RtApi::formatBytes(RtAudioFormat format) {
+    if (format == RTAUDIO_SINT16)
+        return 2;
+    else if (format == RTAUDIO_SINT32 || format == RTAUDIO_FLOAT32)
+        return 4;
+    else if (format == RTAUDIO_FLOAT64)
+        return 8;
+    else if (format == RTAUDIO_SINT24)
+        return 3;
+    else if (format == RTAUDIO_SINT8)
+        return 1;
+    return 0;
+}
+
 long RtApi :: getStreamLatency( void )
 {
   long totalLatency = 0;
@@ -655,25 +678,6 @@ void RtApi :: clearStreamInfo()
     stream_.convertInfo[i].inOffset.clear();
     stream_.convertInfo[i].outOffset.clear();
   }
-}
-
-unsigned int RtApi :: formatBytes( RtAudioFormat format )
-{
-  if ( format == RTAUDIO_SINT16 )
-    return 2;
-  else if ( format == RTAUDIO_SINT32 || format == RTAUDIO_FLOAT32 )
-    return 4;
-  else if ( format == RTAUDIO_FLOAT64 )
-    return 8;
-  else if ( format == RTAUDIO_SINT24 )
-    return 3;
-  else if ( format == RTAUDIO_SINT8 )
-    return 1;
-
-  errorText_ = "RtApi::formatBytes: undefined format.";
-  error( RTAUDIO_WARNING );
-
-  return 0;
 }
 
 void RtApi :: setConvertInfo( StreamMode mode, unsigned int firstChannel )

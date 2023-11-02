@@ -6,12 +6,9 @@ class RtApiWasapi;
 
 class NotificationHandler : public IMMNotificationClient {
 private:
-    RtAudioDeviceCallback callback_ = nullptr;
-    void* userData_ = nullptr;
-    RtApiWasapi* wasapi_;
+    RtAudioDeviceCallbackLambda mCallback = nullptr;
 public:
-    NotificationHandler(RtApiWasapi* wasapi);
-    void setCallback(RtAudioDeviceCallback callback, void* userData);
+    NotificationHandler(RtAudioDeviceCallbackLambda callback);
     HRESULT STDMETHODCALLTYPE OnDefaultDeviceChanged(
         EDataFlow flow,
         ERole     role,
@@ -35,6 +32,7 @@ public:
     HRESULT STDMETHODCALLTYPE QueryInterface(
         REFIID riid,
         _COM_Outptr_ void __RPC_FAR* __RPC_FAR* ppvObject) override {
+        *ppvObject = nullptr;
         return E_NOINTERFACE;
     }
 

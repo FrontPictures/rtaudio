@@ -1,33 +1,8 @@
 #include "RtApiWasapiEnumerator.h"
 #include "WasapiCommon.h"
+#include "utils.h"
 
-#ifndef INITGUID
-#define INITGUID
-#endif
-
-#ifdef _MSC_VER
-#pragma comment( lib, "ksuser" )
-#pragma comment( lib, "mfplat.lib" )
-#pragma comment( lib, "mfuuid.lib" )
-#pragma comment( lib, "wmcodecdspuuid" )
-#endif
-
-RtApiWasapiEnumerator::RtApiWasapiEnumerator()
-{
-    HRESULT hr = CoInitialize(NULL);
-    if (!FAILED(hr))
-        coInitialized_ = true;
-    CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL,
-        CLSCTX_ALL, __uuidof(IMMDeviceEnumerator),
-        (void**)&deviceEnumerator_);
-}
-
-RtApiWasapiEnumerator::~RtApiWasapiEnumerator()
-{
-    deviceEnumerator_.Reset();
-    if (coInitialized_)
-        CoUninitialize();
-}
+#include <functiondiscoverykeys_devpkey.h>
 
 std::vector<RtAudio::DeviceInfo> RtApiWasapiEnumerator::listDevices(void)
 {

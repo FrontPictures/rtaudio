@@ -40,7 +40,6 @@ private:
     bool coInitialized_;
     IMMDeviceEnumerator* deviceEnumerator_;
     RtAudioDeviceCallback callbackExtra_ = nullptr;
-    NotificationHandler wasapiNotificationHandler_;
     
     void listDevices(void) override;
     void listAudioDevices( EDataFlow dataFlow );

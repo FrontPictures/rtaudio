@@ -42,33 +42,6 @@ namespace {
 #endif
         ;
 
-
-#define SMART_PTR_WRAPPER(ptr_type, datatype, remove) ptr_type<datatype, remove>
-#define UNIQUE_WRAPPER(type, remove) SMART_PTR_WRAPPER(std::unique_ptr, type, remove)
-
-#define UNIQUE_FORMAT UNIQUE_WRAPPER(WAVEFORMATEX, decltype(&CoTaskMemFree))
-#define MAKE_UNIQUE_FORMAT_EMPTY UNIQUE_FORMAT(nullptr, CoTaskMemFree);
-
-#define UNIQUE_STRING UNIQUE_WRAPPER(WCHAR, decltype(&CoTaskMemFree))
-#define MAKE_UNIQUE_STRING_EMPTY UNIQUE_STRING(nullptr, CoTaskMemFree);
-
-#define UNIQUE_EVENT UNIQUE_WRAPPER(void, decltype(&CloseHandle))
-#define MAKE_UNIQUE_EVENT_VALUE(v) UNIQUE_EVENT(v, CloseHandle);
-#define MAKE_UNIQUE_EVENT_EMPTY MAKE_UNIQUE_EVENT_VALUE(nullptr);
-
-
-#define CONSTRUCT_UNIQUE_FORMAT(create, out_res) makeUniqueContructed<HRESULT, WAVEFORMATEX, decltype(&CoTaskMemFree)>([&](WAVEFORMATEX** ptr) {return create(ptr);}, out_res, CoTaskMemFree)
-#define CONSTRUCT_UNIQUE_STRING(create, out_res) makeUniqueContructed<HRESULT, WCHAR, decltype(&CoTaskMemFree)>([&](LPWSTR* ptr) {return create(ptr);}, out_res, CoTaskMemFree)
-
-    template<class Result, class Type, class Remove>
-    inline Result makeUniqueContructed(std::function<Result(Type**)> cc,
-        std::unique_ptr<Type, Remove>& out_result, Remove remove_fun) {
-        Type* temp = nullptr;
-        Result res = cc(&temp);
-        out_result = std::move(UNIQUE_WRAPPER(Type, Remove)(temp, remove_fun));
-        return res;
-    }
-
     bool NegotiateExclusiveFormat(IAudioClient* renderAudioClient, UNIQUE_FORMAT& format) {
         HRESULT hr = S_OK;
         hr = renderAudioClient->IsFormatSupported(AUDCLNT_SHAREMODE_EXCLUSIVE, format.get(), nullptr);
@@ -145,27 +118,11 @@ namespace {
             renderFormat(nullptr, CoTaskMemFree),
             bufferDuration(0),
             isInput(true) {}
-    };    
-
-    class COMLibrary_Raii {
-    public:
-        COMLibrary_Raii() {
-            HRESULT hr = CoInitialize(NULL);
-            if (!FAILED(hr))
-                coInitialized_ = true;
-        }
-        COMLibrary_Raii(const COMLibrary_Raii&) = delete;
-        ~COMLibrary_Raii() {
-            if (coInitialized_)
-                CoUninitialize();
-        }
-    private:
-        bool coInitialized_ = false;
     };
 }
 
 RtApiWasapi::RtApiWasapi()
-    : coInitialized_(false), deviceEnumerator_(NULL), wasapiNotificationHandler_(this)
+    : coInitialized_(false), deviceEnumerator_(NULL)
 {
     // WASAPI can run either apartment or multi-threaded
     HRESULT hr = CoInitialize(NULL);
@@ -541,12 +498,7 @@ RtAudioErrorType RtApiWasapi::registerExtraCallback(RtAudioDeviceCallback callba
     if (callbackExtra_) {
         return RTAUDIO_INVALID_USE;
     }
-    callbackExtra_ = callback;
-    wasapiNotificationHandler_.setCallback(callbackExtra_, userData);
-    HRESULT hr = deviceEnumerator_->RegisterEndpointNotificationCallback(&wasapiNotificationHandler_);
-    if (FAILED(hr)) {
-        return RTAUDIO_SYSTEM_ERROR;
-    }
+    callbackExtra_ = callback;        
     return RTAUDIO_NO_ERROR;
 }
 
@@ -555,11 +507,7 @@ RtAudioErrorType RtApiWasapi::unregisterExtraCallback()
     if (!callbackExtra_) {
         return RTAUDIO_INVALID_USE;
     }
-    callbackExtra_ = nullptr;
-    HRESULT hr = deviceEnumerator_->UnregisterEndpointNotificationCallback(&wasapiNotificationHandler_);
-    if (FAILED(hr)) {
-        return RTAUDIO_SYSTEM_ERROR;
-    }
+    callbackExtra_ = nullptr;    
     return RTAUDIO_NO_ERROR;
 }
 

@@ -1,14 +1,10 @@
 #include "WasapiNotificationHandler.h"
 #include "RtAudioWasapi.h"
 #include "utils.h"
+#include <assert.h>
 
-NotificationHandler::NotificationHandler(RtApiWasapi* wasapi) : wasapi_(wasapi) {
-
-}
-
-void NotificationHandler::setCallback(RtAudioDeviceCallback callback, void* userData) {
-    callback_ = callback;
-    userData_ = userData;
+NotificationHandler::NotificationHandler(RtAudioDeviceCallbackLambda callback) : mCallback(callback) {
+    assert(callback);
 }
 
 HRESULT STDMETHODCALLTYPE NotificationHandler::OnDefaultDeviceChanged(
@@ -16,10 +12,8 @@ HRESULT STDMETHODCALLTYPE NotificationHandler::OnDefaultDeviceChanged(
     ERole     role,
     LPCWSTR   pwstrDefaultDeviceId
 ) {
-    if (callback_ && role == eConsole && wasapi_) {
-        auto busId = convertCharPointerToStdString(pwstrDefaultDeviceId);
-        //auto device = wasapi_->getDeviceInfoByBusID(busId);
-        callback_(0, RtAudioDeviceParam::DEFAULT_CHANGED, userData_);
+    if (mCallback && role == eConsole) {
+        mCallback(convertCharPointerToStdString(pwstrDefaultDeviceId), RtAudioDeviceParam::DEFAULT_CHANGED);
     }
     return S_OK;
 }
@@ -27,10 +21,8 @@ HRESULT STDMETHODCALLTYPE NotificationHandler::OnDefaultDeviceChanged(
 HRESULT STDMETHODCALLTYPE NotificationHandler::OnDeviceAdded(
     LPCWSTR pwstrDeviceId
 ) {
-    if (callback_ && wasapi_ && pwstrDeviceId) {        
-        auto busId = convertCharPointerToStdString(pwstrDeviceId);
-        //auto device = wasapi_->getDeviceInfoByBusID(busId);
-        callback_(0, RtAudioDeviceParam::DEVICE_ADDED, userData_);
+    if (mCallback) {
+        mCallback(convertCharPointerToStdString(pwstrDeviceId), RtAudioDeviceParam::DEVICE_ADDED);
     }
     return S_OK;
 }
@@ -38,10 +30,8 @@ HRESULT STDMETHODCALLTYPE NotificationHandler::OnDeviceAdded(
 HRESULT STDMETHODCALLTYPE NotificationHandler::OnDeviceRemoved(
     LPCWSTR pwstrDeviceId
 ) {
-    if (callback_ && wasapi_ && pwstrDeviceId) {
-        auto busId = convertCharPointerToStdString(pwstrDeviceId);
-        //auto device = wasapi_->getDeviceInfoByBusID(busId);
-        callback_(0, RtAudioDeviceParam::DEVICE_REMOVED, userData_);
+    if (mCallback) {
+        mCallback(convertCharPointerToStdString(pwstrDeviceId), RtAudioDeviceParam::DEVICE_REMOVED);
     }
     return S_OK;
 }
@@ -49,10 +39,8 @@ HRESULT STDMETHODCALLTYPE NotificationHandler::OnDeviceStateChanged(
     LPCWSTR pwstrDeviceId,
     DWORD   dwNewState
 ) {
-    if (callback_ && wasapi_ && pwstrDeviceId) {
-        auto busId = convertCharPointerToStdString(pwstrDeviceId);
-        //auto device = wasapi_->getDeviceInfoByBusID(busId);
-        callback_(0, RtAudioDeviceParam::DEVICE_STATE_CHANGED, userData_);
+    if (mCallback) {
+        mCallback(convertCharPointerToStdString(pwstrDeviceId), RtAudioDeviceParam::DEVICE_STATE_CHANGED);
     }
     return S_OK;
 }
@@ -60,11 +48,8 @@ HRESULT STDMETHODCALLTYPE NotificationHandler::OnPropertyValueChanged(
     LPCWSTR           pwstrDeviceId,
     const PROPERTYKEY key
 ) {
-    if (callback_ && wasapi_ && pwstrDeviceId) {
-        auto busId = convertCharPointerToStdString(pwstrDeviceId);
-        //Need mutex here 
-        //auto device = wasapi_->getDeviceInfoByBusID(busId);
-        callback_(0, RtAudioDeviceParam::DEVICE_PROPERTY_CHANGED, userData_);
+    if (mCallback) {
+        mCallback(convertCharPointerToStdString(pwstrDeviceId), RtAudioDeviceParam::DEVICE_PROPERTY_CHANGED);
     }
     return S_OK;
 }
