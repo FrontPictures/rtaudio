@@ -461,18 +461,18 @@ RtApiWasapiStream::RtApiWasapiStream(RtApi::RtApiStream stream, Microsoft::WRL::
     mCaptureClient(captureClient), mDeviceFormat(std::move(deviceFormat)),
     mStreamEvent(std::move(streamEvent)), mShareMode(shareMode), mMode(mode)
 {
-    mStream.apiHandle;
+    stream_.apiHandle;
 }
 
 RtAudioErrorType RtApiWasapiStream::startStream(void)
 {
-    MutexRaii<StreamMutex> lock(mStream.mutex);
-    if (mStream.state != RtApi::STREAM_STOPPED) {
-        if (mStream.state == RtApi::STREAM_RUNNING)
+    MutexRaii<StreamMutex> lock(stream_.mutex);
+    if (stream_.state != RtApi::STREAM_STOPPED) {
+        if (stream_.state == RtApi::STREAM_RUNNING)
             return error(RTAUDIO_WARNING, "RtApiWasapi::startStream(): the stream is already running!");
-        else if (mStream.state == RtApi::STREAM_STOPPING || mStream.state == RtApi::STREAM_CLOSED)
+        else if (stream_.state == RtApi::STREAM_STOPPING || stream_.state == RtApi::STREAM_CLOSED)
             return error(RTAUDIO_WARNING, "RtApiWasapi::startStream(): the stream is stopping or closed!");
-        else if (mStream.state == RtApi::STREAM_ERROR)
+        else if (stream_.state == RtApi::STREAM_ERROR)
             return error(RTAUDIO_WARNING, "RtApiWasapi::startStream(): the stream is in error state!");
         return error(RTAUDIO_WARNING, "RtApiWasapi::startStream(): the stream is not stopped!");
     }
@@ -481,15 +481,15 @@ RtAudioErrorType RtApiWasapiStream::startStream(void)
         return error(RTAUDIO_SYSTEM_ERROR, "RtApiWasapi::startStream(): Unable to start stream.");
     }
 
-    mStream.callbackInfo.thread = (ThreadHandle)CreateThread(NULL, 0, runWasapiThread, this, CREATE_SUSPENDED, NULL);
-    if (!mStream.callbackInfo.thread) {
+    stream_.callbackInfo.thread = (ThreadHandle)CreateThread(NULL, 0, runWasapiThread, this, CREATE_SUSPENDED, NULL);
+    if (!stream_.callbackInfo.thread) {
         return error(RTAUDIO_THREAD_ERROR, "RtApiWasapi::startStream: Unable to instantiate callback thread.");
     }
-    if (SetThreadPriority((void*)mStream.callbackInfo.thread, mStream.callbackInfo.priority) == 0) {
+    if (SetThreadPriority((void*)stream_.callbackInfo.thread, stream_.callbackInfo.priority) == 0) {
         error(RTAUDIO_THREAD_ERROR, "RtApiWasapi::startStream: Unable to set thread priority.");
     }
-    mStream.state = RtApi::STREAM_RUNNING;
-    DWORD res = ResumeThread((void*)mStream.callbackInfo.thread);
+    stream_.state = RtApi::STREAM_RUNNING;
+    DWORD res = ResumeThread((void*)stream_.callbackInfo.thread);
     if (res != 1) {
         error(RTAUDIO_THREAD_ERROR, "RtApiWasapi::startStream: Unable to resume thread.");
     }
@@ -498,11 +498,11 @@ RtAudioErrorType RtApiWasapiStream::startStream(void)
 
 RtAudioErrorType RtApiWasapiStream::stopStream(void)
 {
-    MutexRaii<StreamMutex> lock(mStream.mutex);
-    if (mStream.state != RtApi::STREAM_RUNNING && mStream.state != RtApi::STREAM_ERROR) {
-        if (mStream.state == RtApi::STREAM_STOPPED)
+    MutexRaii<StreamMutex> lock(stream_.mutex);
+    if (stream_.state != RtApi::STREAM_RUNNING && stream_.state != RtApi::STREAM_ERROR) {
+        if (stream_.state == RtApi::STREAM_STOPPED)
             return error(RTAUDIO_WARNING, "RtApiWasapi::stopStream(): the stream is already stopped!");
-        else if (mStream.state == RtApi::STREAM_CLOSED)
+        else if (stream_.state == RtApi::STREAM_CLOSED)
             return error(RTAUDIO_WARNING, "RtApiWasapi::stopStream(): the stream is closed!");
         return error(RTAUDIO_WARNING, "RtApiWasapi::stopStream(): stream is not running!");
     }
@@ -526,14 +526,14 @@ void RtApiWasapiStream::wasapiThread()
 {
     COMLibrary_Raii comLibrary;
     HRESULT hr = S_OK;
-    RtAudioCallback callback = (RtAudioCallback)mStream.callbackInfo.callback;
+    RtAudioCallback callback = (RtAudioCallback)stream_.callbackInfo.callback;
     markThreadAsProAudio();
     UINT32 bufferFrameCount = 0;
     {
-        MutexRaii<StreamMutex> lock(mStream.mutex);
+        MutexRaii<StreamMutex> lock(stream_.mutex);
         hr = mAudioClient->GetBufferSize(&bufferFrameCount);
         if (FAILED(hr) || bufferFrameCount == 0) {
-            mStream.state = RtApi::STREAM_ERROR;
+            stream_.state = RtApi::STREAM_ERROR;
             errorThread(RTAUDIO_DRIVER_ERROR, "RtApiWasapi::wasapiThread: Unable to get buffer size.");
             return;
         }
@@ -541,17 +541,17 @@ void RtApiWasapiStream::wasapiThread()
     while (true) {
         DWORD waitResult = WaitForSingleObject(mStreamEvent.get(), 100);
         if (waitResult == WAIT_TIMEOUT) {
-            MutexRaii<StreamMutex> lock(mStream.mutex);
-            if (mStream.state != RtApi::STREAM_RUNNING)
+            MutexRaii<StreamMutex> lock(stream_.mutex);
+            if (stream_.state != RtApi::STREAM_RUNNING)
                 break;
         }
         {
-            MutexRaii<StreamMutex> lock(mStream.mutex);
-            if (mStream.state != RtApi::STREAM_RUNNING)
+            MutexRaii<StreamMutex> lock(stream_.mutex);
+            if (stream_.state != RtApi::STREAM_RUNNING)
                 break;
             if (waitResult != WAIT_OBJECT_0) {
                 errorThread(RTAUDIO_DRIVER_ERROR, "RtApiWasapi::wasapiThread: Unable to wait event.");
-                mStream.state = RtApi::STREAM_ERROR;
+                stream_.state = RtApi::STREAM_ERROR;
                 break;
             }
             void* userBufferInput = nullptr;
@@ -566,7 +566,7 @@ void RtApiWasapiStream::wasapiThread()
                     hr = mAudioClient->GetCurrentPadding(&numFramesPadding);
                     if (FAILED(hr)) {
                         errorThread(RTAUDIO_DRIVER_ERROR, "RtApiWasapi::wasapiThread: Unable to retrieve render buffer padding.");
-                        mStream.state = RtApi::STREAM_ERROR;
+                        stream_.state = RtApi::STREAM_ERROR;
                         break;
                     }
                 }
@@ -578,11 +578,11 @@ void RtApiWasapiStream::wasapiThread()
                 hr = mRenderClient->GetBuffer(bufferFrameAvailableCount, &streamBuffer);
                 if (FAILED(hr)) {
                     errorThread(RTAUDIO_DRIVER_ERROR, "RtApiWasapi::wasapiThread: Unable to retrieve render buffer.");
-                    mStream.state = RtApi::STREAM_ERROR;
+                    stream_.state = RtApi::STREAM_ERROR;
                     break;
                 }
-                if (mStream.doConvertBuffer[RtApi::StreamMode::OUTPUT]) {
-                    userBufferOutput = mStream.userBuffer[RtApi::OUTPUT];
+                if (stream_.doConvertBuffer[RtApi::StreamMode::OUTPUT]) {
+                    userBufferOutput = stream_.userBuffer[RtApi::OUTPUT];
                 }
                 else {
                     userBufferOutput = streamBuffer;
@@ -592,17 +592,17 @@ void RtApiWasapiStream::wasapiThread()
                 hr = mCaptureClient->GetBuffer(&streamBuffer, &bufferFrameAvailableCount, &captureFlags, NULL, NULL);
                 if (FAILED(hr)) {
                     errorThread(RTAUDIO_DRIVER_ERROR, "RtApiWasapi::wasapiThread: Unable to get capture buffer.");
-                    mStream.state = RtApi::STREAM_ERROR;
+                    stream_.state = RtApi::STREAM_ERROR;
                     break;
                 }
                 if (bufferFrameAvailableCount == 0 || hr == AUDCLNT_S_BUFFER_EMPTY || !streamBuffer) {
                     continue;
                 }
-                if (mStream.doConvertBuffer[RtApi::INPUT]) {
-                    userBufferInput = mStream.userBuffer[RtApi::INPUT];
-                    convertBuffer(mStream, mStream.userBuffer[RtApi::INPUT],
+                if (stream_.doConvertBuffer[RtApi::INPUT]) {
+                    userBufferInput = stream_.userBuffer[RtApi::INPUT];
+                    convertBuffer(stream_, stream_.userBuffer[RtApi::INPUT],
                         (char*)streamBuffer,
-                        mStream.convertInfo[RtApi::INPUT], bufferFrameAvailableCount, RtApi::INPUT);
+                        stream_.convertInfo[RtApi::INPUT], bufferFrameAvailableCount, RtApi::INPUT);
                 }
                 else {
                     userBufferInput = streamBuffer;
@@ -614,21 +614,21 @@ void RtApiWasapiStream::wasapiThread()
                 bufferFrameAvailableCount,
                 getStreamTime(),
                 captureFlags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY ? RTAUDIO_INPUT_OVERFLOW : 0,
-                mStream.callbackInfo.userData);
+                stream_.callbackInfo.userData);
             tickStreamTime();
 
             if (mMode == RtApi::OUTPUT) {
-                if (mStream.doConvertBuffer[mMode])
+                if (stream_.doConvertBuffer[mMode])
                 {
                     // Convert callback buffer to stream format
-                    convertBuffer(mStream, (char*)streamBuffer,
-                        mStream.userBuffer[mMode],
-                        mStream.convertInfo[mMode], bufferFrameAvailableCount, mMode);
+                    convertBuffer(stream_, (char*)streamBuffer,
+                        stream_.userBuffer[mMode],
+                        stream_.convertInfo[mMode], bufferFrameAvailableCount, mMode);
                 }
                 hr = mRenderClient->ReleaseBuffer(bufferFrameAvailableCount, 0);
                 if (FAILED(hr)) {
                     errorThread(RTAUDIO_DRIVER_ERROR, "RtApiWasapi::wasapiThread: Unable to release render buffer.");
-                    mStream.state = RtApi::STREAM_ERROR;
+                    stream_.state = RtApi::STREAM_ERROR;
                     break;
                 }
             }
@@ -636,7 +636,7 @@ void RtApiWasapiStream::wasapiThread()
                 hr = mCaptureClient->ReleaseBuffer(bufferFrameAvailableCount);
                 if (FAILED(hr)) {
                     errorThread(RTAUDIO_DRIVER_ERROR, "RtApiWasapi::wasapiThread: Unable to release render buffer.");
-                    mStream.state = RtApi::STREAM_ERROR;
+                    stream_.state = RtApi::STREAM_ERROR;
                     break;
                 }
             }

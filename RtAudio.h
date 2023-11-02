@@ -898,17 +898,17 @@ protected:
 
 class RTAUDIO_DLL_PUBLIC RtApiStreamClass : public ErrorBase {
 public:
-    RtApiStreamClass(RtApi::RtApiStream stream) : mStream(std::move(stream)) {}
+    RtApiStreamClass(RtApi::RtApiStream stream) : stream_(std::move(stream)) {}
     virtual ~RtApiStreamClass() {}
     virtual RtAudio::Api getCurrentApi(void) = 0;
 
     virtual RtAudioErrorType startStream(void) = 0;
     virtual RtAudioErrorType stopStream(void) = 0;
 
-    double getStreamTime(void) const { return mStream.streamTime; }
-    void tickStreamTime(void) {mStream.streamTime += ( mStream.bufferSize * 1.0 / mStream.sampleRate );}
+    double getStreamTime(void) const { return stream_.streamTime; }
+    void tickStreamTime(void) {stream_.streamTime += ( stream_.bufferSize * 1.0 / stream_.sampleRate );}
 protected:
-    RtApi::RtApiStream mStream;
+    RtApi::RtApiStream stream_;
 };
 
 class RTAUDIO_DLL_PUBLIC RtApiStreamClassFactory : public ErrorBase {
