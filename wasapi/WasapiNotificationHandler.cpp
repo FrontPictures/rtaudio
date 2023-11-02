@@ -1,5 +1,4 @@
 #include "WasapiNotificationHandler.h"
-#include "RtAudioWasapi.h"
 #include "utils.h"
 #include <assert.h>
 

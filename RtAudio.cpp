@@ -2,6 +2,7 @@
 #include "RtAudio.h"
 #include "RtAudio.h"
 #include "RtAudio.h"
+#include "RtAudio.h"
 /************************************************************************/
 /*! \class RtAudio
     \brief Realtime audio i/o C++ classes.
@@ -93,7 +94,11 @@ const unsigned int RtApi::SAMPLE_RATES[] = {
 
 #if defined(__WINDOWS_WASAPI__)
 
-#include "wasapi/RtAudioWasapi.h"
+#include "wasapi/RtApiWasapiEnumerator.h"
+#include "wasapi/RtApiWasapiProber.h"
+#include "wasapi/RtApiWasapiStreamFactory.h"
+#include "wasapi/RtApiWasapiStream.h"
+#include "wasapi/RtApiWasapiSystemCallback.h"
 
 #endif
 
@@ -260,8 +265,8 @@ void RtAudio :: openRtApi( RtAudio::Api api )
     rtapi_ = new RtApiAsio();
 #endif
 #if defined(__WINDOWS_WASAPI__)
-  if ( api == WINDOWS_WASAPI )
-    rtapi_ = new RtApiWasapi();
+  //if ( api == WINDOWS_WASAPI )
+    //rtapi_ = new RtApiWasapi();
 #endif
 #if defined(__MACOSX_CORE__)
   if ( api == MACOSX_CORE )
@@ -492,6 +497,438 @@ void RtApi :: closeStream( void )
 {
   // MUST be implemented in subclasses!
   return;
+}
+
+void RtApi::convertBuffer(const RtApi::RtApiStream stream_, char* outBuffer, char* inBuffer, RtApi::ConvertInfo info, unsigned int samples, RtApi::StreamMode mode)
+{
+    typedef S24 Int24;
+    typedef signed short Int16;
+    typedef signed int Int32;
+    typedef float Float32;
+    typedef double Float64;
+
+    // This function does format conversion, RtApi::INPUT/RtApi::OUTPUT channel compensation, and
+    // data interleaving/deinterleaving.  24-bit integers are assumed to occupy
+    // the lower three bytes of a 32-bit integer.
+
+    if (stream_.deviceInterleaved[mode] != stream_.userInterleaved) {
+        info.inOffset.clear();
+        info.outOffset.clear();
+        if ((mode == RtApi::OUTPUT && stream_.deviceInterleaved[mode]) ||
+            (mode == RtApi::INPUT && stream_.userInterleaved)) {
+            for (int k = 0; k < info.channels; k++) {
+                info.inOffset.push_back(k * samples);
+                info.outOffset.push_back(k);
+                info.inJump = 1;
+            }
+        }
+        else {
+            for (int k = 0; k < info.channels; k++) {
+                info.inOffset.push_back(k);
+                info.outOffset.push_back(k * samples);
+                info.outJump = 1;
+            }
+        }
+    }
+    // Clear our RtApi::DUPLEX device RtApi::OUTPUT buffer if there are more device RtApi::OUTPUTs than user RtApi::OUTPUTs
+    if (outBuffer == stream_.deviceBuffer && stream_.mode == RtApi::DUPLEX && info.outJump > info.inJump)
+        memset(outBuffer, 0, samples * info.outJump * RtApi::formatBytes(info.outFormat));
+
+    int j;
+    if (info.outFormat == RTAUDIO_FLOAT64) {
+        Float64* out = (Float64*)outBuffer;
+
+        if (info.inFormat == RTAUDIO_SINT8) {
+            signed char* in = (signed char*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Float64)in[info.inOffset[j]] / 128.0;
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_SINT16) {
+            Int16* in = (Int16*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Float64)in[info.inOffset[j]] / 32768.0;
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_SINT24) {
+            Int24* in = (Int24*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Float64)in[info.inOffset[j]].asInt() / 8388608.0;
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_SINT32) {
+            Int32* in = (Int32*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Float64)in[info.inOffset[j]] / 2147483648.0;
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_FLOAT32) {
+            Float32* in = (Float32*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Float64)in[info.inOffset[j]];
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_FLOAT64) {
+            // Channel compensation and/or (de)interleaving only.
+            Float64* in = (Float64*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = in[info.inOffset[j]];
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+    }
+    else if (info.outFormat == RTAUDIO_FLOAT32) {
+        Float32* out = (Float32*)outBuffer;
+
+        if (info.inFormat == RTAUDIO_SINT8) {
+            signed char* in = (signed char*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Float32)in[info.inOffset[j]] / 128.f;
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_SINT16) {
+            Int16* in = (Int16*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Float32)in[info.inOffset[j]] / 32768.f;
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_SINT24) {
+            Int24* in = (Int24*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Float32)in[info.inOffset[j]].asInt() / 8388608.f;
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_SINT32) {
+            Int32* in = (Int32*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Float32)in[info.inOffset[j]] / 2147483648.f;
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_FLOAT32) {
+            // Channel compensation and/or (de)interleaving only.
+            Float32* in = (Float32*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = in[info.inOffset[j]];
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_FLOAT64) {
+            Float64* in = (Float64*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Float32)in[info.inOffset[j]];
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+    }
+    else if (info.outFormat == RTAUDIO_SINT32) {
+        Int32* out = (Int32*)outBuffer;
+        if (info.inFormat == RTAUDIO_SINT8) {
+            signed char* in = (signed char*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Int32)in[info.inOffset[j]];
+                    out[info.outOffset[j]] <<= 24;
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_SINT16) {
+            Int16* in = (Int16*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Int32)in[info.inOffset[j]];
+                    out[info.outOffset[j]] <<= 16;
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_SINT24) {
+            Int24* in = (Int24*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Int32)in[info.inOffset[j]].asInt();
+                    out[info.outOffset[j]] <<= 8;
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_SINT32) {
+            // Channel compensation and/or (de)interleaving only.
+            Int32* in = (Int32*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = in[info.inOffset[j]];
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_FLOAT32) {
+            Float32* in = (Float32*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    // Use llround() which returns `long long` which is guaranteed to be at least 64 bits.
+                    out[info.outOffset[j]] = (Int32)std::max(std::min(std::llround(in[info.inOffset[j]] * 2147483648.f), 2147483647LL), -2147483648LL);
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_FLOAT64) {
+            Float64* in = (Float64*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Int32)std::max(std::min(std::llround(in[info.inOffset[j]] * 2147483648.0), 2147483647LL), -2147483648LL);
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+    }
+    else if (info.outFormat == RTAUDIO_SINT24) {
+        Int24* out = (Int24*)outBuffer;
+        if (info.inFormat == RTAUDIO_SINT8) {
+            signed char* in = (signed char*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Int32)(in[info.inOffset[j]] << 16);
+                    //out[info.outOffset[j]] <<= 16;
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_SINT16) {
+            Int16* in = (Int16*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Int32)(in[info.inOffset[j]] << 8);
+                    //out[info.outOffset[j]] <<= 8;
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_SINT24) {
+            // Channel compensation and/or (de)interleaving only.
+            Int24* in = (Int24*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = in[info.inOffset[j]];
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_SINT32) {
+            Int32* in = (Int32*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Int32)(in[info.inOffset[j]] >> 8);
+                    //out[info.outOffset[j]] >>= 8;
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_FLOAT32) {
+            Float32* in = (Float32*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Int32)std::max(std::min(std::llround(in[info.inOffset[j]] * 8388608.f), 8388607LL), -8388608LL);
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_FLOAT64) {
+            Float64* in = (Float64*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Int32)std::max(std::min(std::llround(in[info.inOffset[j]] * 8388608.0), 8388607LL), -8388608LL);
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+    }
+    else if (info.outFormat == RTAUDIO_SINT16) {
+        Int16* out = (Int16*)outBuffer;
+        if (info.inFormat == RTAUDIO_SINT8) {
+            signed char* in = (signed char*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Int16)in[info.inOffset[j]];
+                    out[info.outOffset[j]] <<= 8;
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_SINT16) {
+            // Channel compensation and/or (de)interleaving only.
+            Int16* in = (Int16*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = in[info.inOffset[j]];
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_SINT24) {
+            Int24* in = (Int24*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Int16)(in[info.inOffset[j]].asInt() >> 8);
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_SINT32) {
+            Int32* in = (Int32*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Int16)((in[info.inOffset[j]] >> 16) & 0x0000ffff);
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_FLOAT32) {
+            Float32* in = (Float32*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Int16)std::max(std::min(std::llround(in[info.inOffset[j]] * 32768.f), 32767LL), -32768LL);
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_FLOAT64) {
+            Float64* in = (Float64*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (Int16)std::max(std::min(std::llround(in[info.inOffset[j]] * 32768.0), 32767LL), -32768LL);
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+    }
+    else if (info.outFormat == RTAUDIO_SINT8) {
+        signed char* out = (signed char*)outBuffer;
+        if (info.inFormat == RTAUDIO_SINT8) {
+            // Channel compensation and/or (de)interleaving only.
+            signed char* in = (signed char*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = in[info.inOffset[j]];
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        if (info.inFormat == RTAUDIO_SINT16) {
+            Int16* in = (Int16*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (signed char)((in[info.inOffset[j]] >> 8) & 0x00ff);
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_SINT24) {
+            Int24* in = (Int24*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (signed char)(in[info.inOffset[j]].asInt() >> 16);
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_SINT32) {
+            Int32* in = (Int32*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (signed char)((in[info.inOffset[j]] >> 24) & 0x000000ff);
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_FLOAT32) {
+            Float32* in = (Float32*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (signed char)std::max(std::min(std::llround(in[info.inOffset[j]] * 128.f), 127LL), -128LL);
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+        else if (info.inFormat == RTAUDIO_FLOAT64) {
+            Float64* in = (Float64*)inBuffer;
+            for (unsigned int i = 0; i < samples; i++) {
+                for (j = 0; j < info.channels; j++) {
+                    out[info.outOffset[j]] = (signed char)std::max(std::min(std::llround(in[info.inOffset[j]] * 128.0), 127LL), -128LL);
+                }
+                in += info.inJump;
+                out += info.outJump;
+            }
+        }
+    }
 }
 
 bool RtApi :: probeDeviceOpen( const std::string& /*deviceId*/, StreamMode /*mode*/, unsigned int /*channels*/,
@@ -755,432 +1192,6 @@ void RtApi :: setConvertInfo( StreamMode mode, unsigned int firstChannel )
       else {
         for ( int k=0; k<stream_.convertInfo[mode].channels; k++ )
           stream_.convertInfo[mode].inOffset[k] += ( firstChannel  * stream_.bufferSize );
-      }
-    }
-  }
-}
-
-void RtApi :: convertBuffer( char *outBuffer, char *inBuffer, ConvertInfo info, unsigned int samples, StreamMode mode)
-{
-  // This function does format conversion, input/output channel compensation, and
-  // data interleaving/deinterleaving.  24-bit integers are assumed to occupy
-  // the lower three bytes of a 32-bit integer.
-
-    if ( stream_.deviceInterleaved[mode] != stream_.userInterleaved ) {
-        info.inOffset.clear();
-        info.outOffset.clear();
-      if ( ( mode == OUTPUT && stream_.deviceInterleaved[mode] ) ||
-           ( mode == INPUT && stream_.userInterleaved ) ) {
-        for ( int k=0; k<info.channels; k++ ) {
-          info.inOffset.push_back( k * samples );
-          info.outOffset.push_back( k );
-          info.inJump = 1;
-        }
-      }
-      else {
-        for ( int k=0; k<info.channels; k++ ) {
-          info.inOffset.push_back( k );
-          info.outOffset.push_back( k * samples );
-          info.outJump = 1;
-        }
-      }
-    }
-  // Clear our duplex device output buffer if there are more device outputs than user outputs
-  if ( outBuffer == stream_.deviceBuffer && stream_.mode == DUPLEX && info.outJump > info.inJump )
-    memset( outBuffer, 0, samples * info.outJump * formatBytes( info.outFormat ) );
-
-  int j;
-  if (info.outFormat == RTAUDIO_FLOAT64) {
-    Float64 *out = (Float64 *)outBuffer;
-
-    if (info.inFormat == RTAUDIO_SINT8) {
-      signed char *in = (signed char *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Float64) in[info.inOffset[j]] / 128.0;
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_SINT16) {
-      Int16 *in = (Int16 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Float64) in[info.inOffset[j]] / 32768.0;
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_SINT24) {
-      Int24 *in = (Int24 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Float64) in[info.inOffset[j]].asInt() / 8388608.0;
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_SINT32) {
-      Int32 *in = (Int32 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Float64) in[info.inOffset[j]] / 2147483648.0;
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_FLOAT32) {
-      Float32 *in = (Float32 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Float64) in[info.inOffset[j]];
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_FLOAT64) {
-      // Channel compensation and/or (de)interleaving only.
-      Float64 *in = (Float64 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = in[info.inOffset[j]];
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-  }
-  else if (info.outFormat == RTAUDIO_FLOAT32) {
-    Float32 *out = (Float32 *)outBuffer;
-
-    if (info.inFormat == RTAUDIO_SINT8) {
-      signed char *in = (signed char *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Float32) in[info.inOffset[j]] / 128.f;
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_SINT16) {
-      Int16 *in = (Int16 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Float32) in[info.inOffset[j]] / 32768.f;
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_SINT24) {
-      Int24 *in = (Int24 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Float32) in[info.inOffset[j]].asInt() / 8388608.f;
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_SINT32) {
-      Int32 *in = (Int32 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Float32) in[info.inOffset[j]] / 2147483648.f;
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_FLOAT32) {
-      // Channel compensation and/or (de)interleaving only.
-      Float32 *in = (Float32 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = in[info.inOffset[j]];
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_FLOAT64) {
-      Float64 *in = (Float64 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Float32) in[info.inOffset[j]];
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-  }
-  else if (info.outFormat == RTAUDIO_SINT32) {
-    Int32 *out = (Int32 *)outBuffer;
-    if (info.inFormat == RTAUDIO_SINT8) {
-      signed char *in = (signed char *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Int32) in[info.inOffset[j]];
-          out[info.outOffset[j]] <<= 24;
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_SINT16) {
-      Int16 *in = (Int16 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Int32) in[info.inOffset[j]];
-          out[info.outOffset[j]] <<= 16;
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_SINT24) {
-      Int24 *in = (Int24 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Int32) in[info.inOffset[j]].asInt();
-          out[info.outOffset[j]] <<= 8;
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_SINT32) {
-      // Channel compensation and/or (de)interleaving only.
-      Int32 *in = (Int32 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = in[info.inOffset[j]];
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_FLOAT32) {
-      Float32 *in = (Float32 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          // Use llround() which returns `long long` which is guaranteed to be at least 64 bits.
-          out[info.outOffset[j]] = (Int32) std::max(std::min(std::llround(in[info.inOffset[j]] * 2147483648.f), 2147483647LL), -2147483648LL);
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_FLOAT64) {
-      Float64 *in = (Float64 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Int32) std::max(std::min(std::llround(in[info.inOffset[j]] * 2147483648.0), 2147483647LL), -2147483648LL);
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-  }
-  else if (info.outFormat == RTAUDIO_SINT24) {
-    Int24 *out = (Int24 *)outBuffer;
-    if (info.inFormat == RTAUDIO_SINT8) {
-      signed char *in = (signed char *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Int32) (in[info.inOffset[j]] << 16);
-          //out[info.outOffset[j]] <<= 16;
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_SINT16) {
-      Int16 *in = (Int16 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Int32) (in[info.inOffset[j]] << 8);
-          //out[info.outOffset[j]] <<= 8;
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_SINT24) {
-      // Channel compensation and/or (de)interleaving only.
-      Int24 *in = (Int24 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = in[info.inOffset[j]];
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_SINT32) {
-      Int32 *in = (Int32 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Int32) (in[info.inOffset[j]] >> 8);
-          //out[info.outOffset[j]] >>= 8;
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_FLOAT32) {
-      Float32 *in = (Float32 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Int32) std::max(std::min(std::llround(in[info.inOffset[j]] * 8388608.f), 8388607LL), -8388608LL);
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_FLOAT64) {
-      Float64 *in = (Float64 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Int32) std::max(std::min(std::llround(in[info.inOffset[j]] * 8388608.0), 8388607LL), -8388608LL);
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-  }
-  else if (info.outFormat == RTAUDIO_SINT16) {
-    Int16 *out = (Int16 *)outBuffer;
-    if (info.inFormat == RTAUDIO_SINT8) {
-      signed char *in = (signed char *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Int16) in[info.inOffset[j]];
-          out[info.outOffset[j]] <<= 8;
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_SINT16) {
-      // Channel compensation and/or (de)interleaving only.
-      Int16 *in = (Int16 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = in[info.inOffset[j]];
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_SINT24) {
-      Int24 *in = (Int24 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Int16) (in[info.inOffset[j]].asInt() >> 8);
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_SINT32) {
-      Int32 *in = (Int32 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Int16) ((in[info.inOffset[j]] >> 16) & 0x0000ffff);
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_FLOAT32) {
-      Float32 *in = (Float32 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Int16) std::max(std::min(std::llround(in[info.inOffset[j]] * 32768.f), 32767LL), -32768LL);
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_FLOAT64) {
-      Float64 *in = (Float64 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (Int16) std::max(std::min(std::llround(in[info.inOffset[j]] * 32768.0), 32767LL), -32768LL);
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-  }
-  else if (info.outFormat == RTAUDIO_SINT8) {
-    signed char *out = (signed char *)outBuffer;
-    if (info.inFormat == RTAUDIO_SINT8) {
-      // Channel compensation and/or (de)interleaving only.
-      signed char *in = (signed char *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = in[info.inOffset[j]];
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    if (info.inFormat == RTAUDIO_SINT16) {
-      Int16 *in = (Int16 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (signed char) ((in[info.inOffset[j]] >> 8) & 0x00ff);
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_SINT24) {
-      Int24 *in = (Int24 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (signed char) (in[info.inOffset[j]].asInt() >> 16);
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_SINT32) {
-      Int32 *in = (Int32 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (signed char) ((in[info.inOffset[j]] >> 24) & 0x000000ff);
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_FLOAT32) {
-      Float32 *in = (Float32 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (signed char) std::max(std::min(std::llround(in[info.inOffset[j]] * 128.f), 127LL), -128LL);
-        }
-        in += info.inJump;
-        out += info.outJump;
-      }
-    }
-    else if (info.inFormat == RTAUDIO_FLOAT64) {
-      Float64 *in = (Float64 *)inBuffer;
-      for (unsigned int i=0; i<samples; i++) {
-        for (j=0; j<info.channels; j++) {
-          out[info.outOffset[j]] = (signed char) std::max(std::min(std::llround(in[info.inOffset[j]] * 128.0), 127LL), -128LL);
-        }
-        in += info.inJump;
-        out += info.outJump;
       }
     }
   }

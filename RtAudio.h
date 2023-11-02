@@ -707,7 +707,7 @@ public:
     void setErrorCallback(RtAudioErrorCallback errorCallback) { errorCallback_ = errorCallback; }
     void showWarnings(bool value) { showWarnings_ = value; }
 protected:
-    std::ostringstream errorStream_;    
+    std::ostringstream errorStream_;
     RtAudioErrorCallback errorCallback_ = nullptr;
     RtAudioErrorType error(RtAudioErrorType type, const std::string& message);
     RtAudioErrorType errorThread(RtAudioErrorType type, const std::string& message);
@@ -826,13 +826,15 @@ public:
             :apiHandle(0), deviceBuffer(0) {} // { device[0] = std::string(); device[1] = std::string(); }
     };
 
+    static void convertBuffer(const RtApi::RtApiStream stream_, char* outBuffer, char* inBuffer, RtApi::ConvertInfo info, unsigned int samples, RtApi::StreamMode mode);
+
 protected:
 
     static const unsigned int MAX_SAMPLE_RATES;
     static const unsigned int SAMPLE_RATES[];
 
     // A protected structure for audio streams.
-    
+
 
     typedef S24 Int24;
     typedef signed short Int16;
@@ -883,12 +885,6 @@ protected:
 
     RtAudioErrorType errorText(RtAudioErrorType type, const std::string& errorText);
 
-    /*!
-      Protected method used to perform format, channel number, and/or interleaving
-      conversions between the user and device buffers.
-    */
-    void convertBuffer(char* outBuffer, char* inBuffer, ConvertInfo info, unsigned int samples, StreamMode mode);
-
     //! Protected common method used to perform byte-swapping on buffers.
     void byteSwapBuffer(char* buffer, unsigned int samples, RtAudioFormat format);
 
@@ -906,7 +902,7 @@ public:
     virtual RtAudioErrorType stopStream(void) = 0;
 
     double getStreamTime(void) const { return stream_.streamTime; }
-    void tickStreamTime(void) {stream_.streamTime += ( stream_.bufferSize * 1.0 / stream_.sampleRate );}
+    void tickStreamTime(void) { stream_.streamTime += (stream_.bufferSize * 1.0 / stream_.sampleRate); }
 protected:
     RtApi::RtApiStream stream_;
 };
@@ -916,8 +912,8 @@ public:
     RtApiStreamClassFactory() {}
     virtual ~RtApiStreamClassFactory() {}
     virtual RtAudio::Api getCurrentApi(void) = 0;
-    virtual std::shared_ptr<RtApiStreamClass> createStream(RtAudio::DeviceInfo device, RtApi::StreamMode mode, unsigned int channels,
-        unsigned int sampleRate, RtAudioFormat format, unsigned int bufferSize, RtAudio::StreamOptions* options) = 0;
+    virtual std::shared_ptr<RtApiStreamClass> createStream(RtAudio::DeviceInfo device, RtApi::StreamMode mode, unsigned int channels, unsigned int sampleRate, RtAudioFormat format, unsigned int bufferSize, RtAudioCallback callback,
+        void* userData, RtAudio::StreamOptions* options) = 0;
 };
 
 // **************************************************************** //

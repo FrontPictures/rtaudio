@@ -180,7 +180,7 @@ if (RTAUDIO_API_WASAPI)
   list(APPEND LINKLIBS ksuser mfplat mfuuid wmcodecdspuuid)
   list(APPEND API_DEFS "-D__WINDOWS_WASAPI__")
   list(APPEND API_LIST "wasapi")
-  list(APPEND rtaudio_SOURCES "wasapi/RtAudioWasapi.cpp" "wasapi/RtAudioWasapi.h" "wasapi/WasapiResampler.cpp"
+  list(APPEND rtaudio_SOURCES "wasapi/WasapiResampler.cpp"
     "wasapi/WasapiResampler.h" "wasapi/WasapiBuffer.cpp" "wasapi/WasapiBuffer.h" "wasapi/WasapiNotificationHandler.cpp"
     "wasapi/WasapiNotificationHandler.h" "wasapi/RtApiWasapiEnumerator.cpp" "wasapi/RtApiWasapiEnumerator.h" "wasapi/WasapiCommon.h"
     "wasapi/WasapiCommon.cpp" "wasapi/RtApiWasapiProber.cpp" "wasapi/RtApiWasapiProber.h" "wasapi/RtApiWasapiStream.cpp" "wasapi/RtApiWasapiStream.h"

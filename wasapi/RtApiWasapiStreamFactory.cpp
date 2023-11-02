@@ -141,7 +141,8 @@ namespace {
     }
 }
 
-std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(RtAudio::DeviceInfo device, RtApi::StreamMode mode, unsigned int channels, unsigned int sampleRate, RtAudioFormat format, unsigned int bufferSize, RtAudio::StreamOptions* options)
+std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(RtAudio::DeviceInfo device, RtApi::StreamMode mode, unsigned int channels, unsigned int sampleRate, RtAudioFormat format, unsigned int bufferSize, RtAudioCallback callback,
+    void* userData, RtAudio::StreamOptions* options)
 {
     if (!deviceEnumerator_)
         return {};
@@ -306,6 +307,9 @@ std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(RtAudio
     stream_.channelOffset[mode] = 0;
     stream_.userFormat = format;
     stream_.deviceFormat[mode] = GetRtAudioTypeFromWasapi(deviceFormat.get());
+    stream_.callbackInfo.callback = callback;
+    stream_.callbackInfo.userData = userData;
+
     if (stream_.deviceFormat[mode] == 0) {
         error(RTAUDIO_SYSTEM_ERROR, "RtApiWasapiStreamFactory: wasapi format not implemented");
         return {};
