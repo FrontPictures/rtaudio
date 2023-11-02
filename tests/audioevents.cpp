@@ -40,7 +40,7 @@ int main(int argc, char* argv[]) {
     }
     std::cout << "\nWaiting for events\n";
     {
-        auto systemCallbacks = RtAudioNamespace::GetRtAudioSystemCallback(api, [](const std::string& busId, RtAudioDeviceParam param) {
+        auto systemCallbacks = RtAudio::GetRtAudioSystemCallback(api, [](const std::string& busId, RtAudioDeviceParam param) {
             std::cout << DeviceParamToString(param) << " : " << busId << std::endl;
             });
         std::this_thread::sleep_for(std::chrono::seconds(durationSecs));

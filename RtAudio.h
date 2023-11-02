@@ -276,10 +276,15 @@ typedef std::function<void(RtAudioErrorType type,
 
 class RtApi;
 
+class RtApiStreamClassFactory;
+class RtApiProber;
+class RtApiEnumerator;
+class RtApiSystemCallback;
+
+
 class RTAUDIO_DLL_PUBLIC RtAudio
 {
-public:
-
+public:    
     //! Audio API specifier arguments.
     enum Api {
         UNSPECIFIED,    /*!< Search for a working compiled API. */
@@ -292,6 +297,14 @@ public:
         RTAUDIO_DUMMY,  /*!< A compilable but non-functional API. */
         NUM_APIS        /*!< Number of values in this enum. */
     };
+
+    static std::shared_ptr<RtApiEnumerator> GetRtAudioEnumerator(RtAudio::Api api);
+
+    static std::shared_ptr<RtApiProber> GetRtAudioProber(RtAudio::Api api);
+
+    static std::shared_ptr<RtApiStreamClassFactory> GetRtAudioStreamFactory(RtAudio::Api api);
+
+    static std::shared_ptr<RtApiSystemCallback> GetRtAudioSystemCallback(RtAudio::Api api, RtAudioDeviceCallbackLambda callback);
 
     //! The public device information structure for returning queried values.
     struct DeviceInfo {
@@ -915,16 +928,6 @@ public:
     virtual std::shared_ptr<RtApiStreamClass> createStream(RtAudio::DeviceInfo device, RtApi::StreamMode mode, unsigned int channels, unsigned int sampleRate, RtAudioFormat format, unsigned int bufferSize, RtAudioCallback callback,
         void* userData, RtAudio::StreamOptions* options) = 0;
 };
-
-namespace RtAudioNamespace {
-    std::shared_ptr<RtApiEnumerator> RTAUDIO_DLL_PUBLIC GetRtAudioEnumerator(RtAudio::Api api);
-
-    std::shared_ptr<RtApiProber> RTAUDIO_DLL_PUBLIC GetRtAudioProber(RtAudio::Api api);
-
-    std::shared_ptr<RtApiStreamClassFactory> RTAUDIO_DLL_PUBLIC GetRtAudioStreamFactory(RtAudio::Api api);
-
-    std::shared_ptr<RtApiSystemCallback> RTAUDIO_DLL_PUBLIC GetRtAudioSystemCallback(RtAudio::Api api, RtAudioDeviceCallbackLambda callback);
-}
 
 // **************************************************************** //
 //

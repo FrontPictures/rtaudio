@@ -41,7 +41,7 @@ void listDevices(std::shared_ptr<RtApiEnumerator> enumerator)
     auto devices = enumerator->listDevices();
     std::cout << "\nFound " << devices.size() << " device(s) ...\n";
 
-    auto prober = RtAudioNamespace::GetRtAudioProber(enumerator->getCurrentApi());
+    auto prober = RtAudio::GetRtAudioProber(enumerator->getCurrentApi());
     if (!prober) {
         std::cout << "\Failed to get prober" << std::endl;
         return;
@@ -109,7 +109,7 @@ int main(int argc, char* argv[])
     char input;
     for (size_t api = 0; api < apis.size(); api++) {
         if (argc < 2 || apis[api] == RtAudio::getCompiledApiByName(argv[1])) {
-            std::shared_ptr<RtApiEnumerator> enumerator = RtAudioNamespace::GetRtAudioEnumerator(apis[api]);
+            std::shared_ptr<RtApiEnumerator> enumerator = RtAudio::GetRtAudioEnumerator(apis[api]);
             if (!enumerator) {
                 std::cout << "\nFailed to create audio enumerator" << std::endl;
                 return 1;
