@@ -4,7 +4,7 @@
 #include "WasapiNotificationHandler.h"
 #include "WasapiCommon.h"
 
-class RTAUDIO_DLL_PUBLIC RtApiWasapiSystemCallback : public ErrorBase, public RtApiWasapiCommon {
+class RTAUDIO_DLL_PUBLIC RtApiWasapiSystemCallback : public RtApiSystemCallback, public RtApiWasapiCommon {
 public:
     RtApiWasapiSystemCallback(RtAudioDeviceCallbackLambda callback);
     ~RtApiWasapiSystemCallback();

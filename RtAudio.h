@@ -916,6 +916,15 @@ public:
         void* userData, RtAudio::StreamOptions* options) = 0;
 };
 
+
+std::shared_ptr<RtApiEnumerator> RTAUDIO_DLL_PUBLIC GetRtAudioEnumerator(RtAudio::Api api);
+
+std::shared_ptr<RtApiProber> RTAUDIO_DLL_PUBLIC GetRtAudioProber(RtAudio::Api api);
+
+std::shared_ptr<RtApiStreamClassFactory> RTAUDIO_DLL_PUBLIC GetRtAudioStreamFactory(RtAudio::Api api);
+
+std::shared_ptr<RtApiSystemCallback> RTAUDIO_DLL_PUBLIC GetRtAudioSystemCallback(RtAudio::Api api, RtAudioDeviceCallbackLambda callback);
+
 // **************************************************************** //
 //
 // Inline RtAudio definitions.

@@ -379,6 +379,65 @@ RtAudioErrorType ErrorBase::error(RtAudioErrorType type)
     return type;
 }
 
+std::shared_ptr<RtApiEnumerator> GetRtAudioEnumerator(RtAudio::Api api) {
+#if defined(__UNIX_JACK__)
+    if ( api == UNIX_JACK )
+        rtapi_ = new RtApiJack();
+#endif
+#if defined(__LINUX_ALSA__)
+    if ( api == LINUX_ALSA )
+        rtapi_ = new RtApiAlsa();
+#endif
+#if defined(__LINUX_PULSE__)
+    if ( api == LINUX_PULSE )
+        rtapi_ = new RtApiPulse();
+#endif
+#if defined(__WINDOWS_ASIO__)
+    if ( api == WINDOWS_ASIO )
+        rtapi_ = new RtApiAsio();
+#endif
+#if defined(__WINDOWS_WASAPI__)
+    if (api == RtAudio::WINDOWS_WASAPI)
+        return std::make_shared<RtApiWasapiEnumerator>();
+#endif
+#if defined(__MACOSX_CORE__)
+    if ( api == MACOSX_CORE )
+        rtapi_ = new RtApiCore();
+#endif
+#if defined(__RTAUDIO_DUMMY__)
+    if ( api == RTAUDIO_DUMMY )
+        rtapi_ = new RtApiDummy();
+#endif
+    return {};
+}
+
+std::shared_ptr<RtApiProber> GetRtAudioProber(RtAudio::Api api)
+{
+#if defined(__WINDOWS_WASAPI__)
+    if (api == RtAudio::WINDOWS_WASAPI)
+        return std::make_shared<RtApiWasapiProber>();
+#endif
+    return {};
+}
+
+std::shared_ptr<RtApiStreamClassFactory> GetRtAudioStreamFactory(RtAudio::Api api)
+{
+#if defined(__WINDOWS_WASAPI__)
+    if (api == RtAudio::WINDOWS_WASAPI)
+        return std::make_shared<RtApiWasapiStreamFactory>();
+#endif
+    return {};
+}
+
+std::shared_ptr<RtApiSystemCallback> GetRtAudioSystemCallback(RtAudio::Api api, RtAudioDeviceCallbackLambda callback)
+{
+#if defined(__WINDOWS_WASAPI__)
+    if (api == RtAudio::WINDOWS_WASAPI)
+        return std::make_shared<RtApiWasapiSystemCallback>(callback);
+#endif
+    return {};
+}
+
 // *************************************************** //
 //
 // Public RtApi definitions (see end of file for
