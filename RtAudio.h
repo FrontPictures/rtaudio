@@ -834,9 +834,6 @@ public:
 #if defined(HAVE_GETTIMEOFDAY)
         struct timeval lastTickTimestamp;
 #endif
-
-        RtApiStream()
-            :apiHandle(0), deviceBuffer(0) {} // { device[0] = std::string(); device[1] = std::string(); }
     };
 
     static void convertBuffer(const RtApi::RtApiStream stream_, char* outBuffer, char* inBuffer, RtApi::ConvertInfo info, unsigned int samples, RtApi::StreamMode mode);
@@ -907,12 +904,14 @@ protected:
 
 class RTAUDIO_DLL_PUBLIC RtApiStreamClass : public ErrorBase {
 public:
-    RtApiStreamClass(RtApi::RtApiStream stream) : stream_(std::move(stream)) {}
-    virtual ~RtApiStreamClass() {}
+    RtApiStreamClass(RtApi::RtApiStream stream);
+    virtual ~RtApiStreamClass();
     virtual RtAudio::Api getCurrentApi(void) = 0;
 
     virtual RtAudioErrorType startStream(void) = 0;
     virtual RtAudioErrorType stopStream(void) = 0;
+
+    bool isStreamRunning();
 
     double getStreamTime(void) const { return stream_.streamTime; }
     void tickStreamTime(void) { stream_.streamTime += (stream_.bufferSize * 1.0 / stream_.sampleRate); }

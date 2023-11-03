@@ -1,6 +1,7 @@
 #include "RtApiWasapiStreamFactory.h"
 #include <Audioclient.h>
 #include "RtApiWasapiStream.h"
+#include "utils.h"
 
 namespace {
     bool NegotiateExclusiveFormat(IAudioClient* renderAudioClient, UNIQUE_FORMAT& format) {
@@ -309,7 +310,6 @@ std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(RtAudio
     stream_.deviceFormat[mode] = GetRtAudioTypeFromWasapi(deviceFormat.get());
     stream_.callbackInfo.callback = callback;
     stream_.callbackInfo.userData = userData;
-
     if (stream_.deviceFormat[mode] == 0) {
         error(RTAUDIO_SYSTEM_ERROR, "RtApiWasapiStreamFactory: wasapi format not implemented");
         return {};
@@ -333,17 +333,18 @@ std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(RtAudio
         setConvertInfo(mode, stream_);
 
     unsigned int bufferBytes = stream_.nUserChannels[mode] * stream_.bufferSize * RtApi::formatBytes(stream_.userFormat);
-    stream_.userBuffer[mode] = (char*)calloc(bufferBytes, 1);
-    if (!stream_.userBuffer[mode]) {
-        error(RTAUDIO_MEMORY_ERROR, "RtApiWasapi::probeDeviceOpen: Error allocating user buffer memory.");
-        return {};
+    if (stream_.doConvertBuffer[mode]) {
+        stream_.userBuffer[mode] = (char*)calloc(bufferBytes, 1);
+        if (!stream_.userBuffer[mode]) {
+            error(RTAUDIO_MEMORY_ERROR, "RtApiWasapi::probeDeviceOpen: Error allocating user buffer memory.");
+            return {};
+        }
     }
 
     if (options && options->flags & RTAUDIO_SCHEDULE_REALTIME)
         stream_.callbackInfo.priority = 15;
     else
-        stream_.callbackInfo.priority = 0;
-
+        stream_.callbackInfo.priority = 0;    
     return std::shared_ptr<RtApiWasapiStream>(
         new RtApiWasapiStream(std::move(stream_), audioClient, renderClient, captureClient, std::move(deviceFormat),
             std::move(streamEvent), shareMode, mode));

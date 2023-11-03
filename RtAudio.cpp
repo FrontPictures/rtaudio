@@ -3,6 +3,8 @@
 #include "RtAudio.h"
 #include "RtAudio.h"
 #include "RtAudio.h"
+#include "RtAudio.h"
+#include "RtAudio.h"
 /************************************************************************/
 /*! \class RtAudio
     \brief Realtime audio i/o C++ classes.
@@ -1052,6 +1054,31 @@ long RtApi :: getStreamLatency( void )
     totalLatency += stream_.latency[1];
 
   return totalLatency;
+}
+
+RtApiStreamClass::RtApiStreamClass(RtApi::RtApiStream stream) : stream_(std::move(stream)) {
+    stream_.state = RtApi::StreamState::STREAM_STOPPED;
+    MUTEX_INITIALIZE(&stream_.mutex);
+}
+
+RtApiStreamClass::~RtApiStreamClass()
+{
+    for (int i = 0; i < 2; i++) {
+        if (stream_.userBuffer[i]) {
+            free(stream_.userBuffer[i]);
+            stream_.userBuffer[i] = 0;
+        }
+    }
+    if (stream_.deviceBuffer) {
+        free(stream_.deviceBuffer);
+        stream_.deviceBuffer = 0;
+    }
+    MUTEX_DESTROY( &stream_.mutex );
+}
+
+bool RtApiStreamClass::isStreamRunning() {
+    MutexRaii<StreamMutex> lock(stream_.mutex);
+    return stream_.state == RtApi::StreamState::STREAM_RUNNING;
 }
 
 /*

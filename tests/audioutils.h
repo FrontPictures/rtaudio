@@ -57,3 +57,4 @@ void fill_sin(T** data_out_void, bool planar, int channels, int samplerate, int 
         write_float_to_data(data_out_void, planar, channels, y, x, mix, dst_offset);
     }
 }
+

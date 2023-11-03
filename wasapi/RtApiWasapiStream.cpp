@@ -29,7 +29,6 @@ RtApiWasapiStream::RtApiWasapiStream(RtApi::RtApiStream stream, Microsoft::WRL::
     mCaptureClient(captureClient), mDeviceFormat(std::move(deviceFormat)),
     mStreamEvent(std::move(streamEvent)), mShareMode(shareMode), mMode(mode)
 {
-    stream_.apiHandle;
 }
 
 RtAudioErrorType RtApiWasapiStream::startStream(void)
