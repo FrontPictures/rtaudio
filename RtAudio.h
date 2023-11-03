@@ -437,187 +437,11 @@ public:
 
     //! Return the compiled audio API having the given display name.
     /*!
-      A case sensitive comparison will check the specified display name
-      against the list of compiled APIs, and return the one that
-      matches. On failure, the function returns UNSPECIFIED.
+    A case sensitive comparison will check the specified display name
+    against the list of compiled APIs, and return the one that
+    matches. On failure, the function returns UNSPECIFIED.
     */
     static RtAudio::Api getCompiledApiByDisplayName(const std::string& name);
-
-    //! The class constructor.
-    /*!
-      The constructor attempts to create an RtApi instance.
-
-      If an API argument is specified but that API has not been
-      compiled, a warning is issued and an instance of an available API
-      is created. If no compiled API is found, the routine will abort
-      (though this should be impossible because RtDummy is the default
-      if no API-specific preprocessor definition is provided to the
-      compiler). If no API argument is specified and multiple API
-      support has been compiled, the default order of use is JACK, ALSA,
-      OSS (Linux systems) and ASIO, DS (Windows systems).
-
-      An optional errorCallback function can be specified to
-      subsequently receive warning and error messages.
-    */
-    RtAudio(RtAudio::Api api = UNSPECIFIED, RtAudioErrorCallback&& errorCallback = 0);
-
-    //! The destructor.
-    /*!
-      If a stream is running or open, it will be stopped and closed
-      automatically.
-    */
-    ~RtAudio();
-
-    //! Returns the audio API specifier for the current instance of RtAudio.
-    RtAudio::Api getCurrentApi(void);
-
-    std::vector<RtAudio::DeviceInfo> getDeviceInfosNoProbe(void);
-
-    //! Return an RtAudio::DeviceInfo structure for a specified device bus ID.
-    RtAudio::DeviceInfo getDeviceInfoByBusID(std::string busID);
-
-    //! A public function for opening a stream with the specified parameters.
-    /*!
-      An RTAUDIO_SYSTEM_ERROR is returned if a stream cannot be
-      opened with the specified parameters or an error occurs during
-      processing.  An RTAUDIO_INVALID_USE is returned if a stream
-      is already open or any invalid stream parameters are specified.
-
-      \param outputParameters Specifies output stream parameters to use
-             when opening a stream, including a device ID, number of channels,
-             and starting channel number.  For input-only streams, this
-             argument should be NULL.  The device ID is a value returned by
-             getDeviceIds().
-      \param inputParameters Specifies input stream parameters to use
-             when opening a stream, including a device ID, number of channels,
-             and starting channel number.  For output-only streams, this
-             argument should be NULL.  The device ID is a value returned by
-             getDeviceIds().
-      \param format An RtAudioFormat specifying the desired sample data format.
-      \param sampleRate The desired sample rate (sample frames per second).
-      \param bufferFrames A pointer to a value indicating the desired
-             internal buffer size in sample frames.  The actual value
-             used by the device is returned via the same pointer.  A
-             value of zero can be specified, in which case the lowest
-             allowable value is determined.
-      \param callback A client-defined function that will be invoked
-             when input data is available and/or output data is needed.
-      \param userData An optional pointer to data that can be accessed
-             from within the callback function.
-      \param options An optional pointer to a structure containing various
-             global stream options, including a list of OR'ed RtAudioStreamFlags
-             and a suggested number of stream buffers that can be used to
-             control stream latency.  More buffers typically result in more
-             robust performance, though at a cost of greater latency.  If a
-             value of zero is specified, a system-specific median value is
-             chosen.  If the RTAUDIO_MINIMIZE_LATENCY flag bit is set, the
-             lowest allowable value is used.  The actual value used is
-             returned via the structure argument.  The parameter is API dependent.
-    */
-    RtAudioErrorType openStream(RtAudio::StreamParameters* outputParameters,
-        RtAudio::StreamParameters* inputParameters,
-        RtAudioFormat format, unsigned int sampleRate,
-        unsigned int* bufferFrames, RtAudioCallback callback,
-        void* userData = NULL, RtAudio::StreamOptions* options = NULL);
-
-    //! A function that closes a stream and frees any associated stream memory.
-    /*!
-      If a stream is not open, an RTAUDIO_WARNING will be passed to the
-      user-provided errorCallback function (or otherwise printed to
-      stderr).
-    */
-    void closeStream(void);
-
-    //! A function that starts a stream.
-    /*!
-      An RTAUDIO_SYSTEM_ERROR is returned if an error occurs during
-      processing. An RTAUDIO_WARNING is returned if a stream is not open
-      or is already running.
-    */
-    RtAudioErrorType startStream(void);
-
-    //! Stop a stream, allowing any samples remaining in the output queue to be played.
-    /*!
-      An RTAUDIO_SYSTEM_ERROR is returned if an error occurs during
-      processing.  An RTAUDIO_WARNING is returned if a stream is not
-      open or is already stopped.
-    */
-    RtAudioErrorType stopStream(void);
-
-    //! Stop a stream, discarding any samples remaining in the input/output queue.
-    /*!
-      An RTAUDIO_SYSTEM_ERROR is returned if an error occurs during
-      processing.  An RTAUDIO_WARNING is returned if a stream is not
-      open or is already stopped.
-    */
-    RtAudioErrorType abortStream(void);
-
-    RtAudioErrorType registerExtraCallback(RtAudioDeviceCallback callback, void* userData);
-    RtAudioErrorType unregisterExtraCallback();
-
-    //! Retrieve the error message corresponding to the last error or warning condition.
-    /*!
-      This function can be used to get a detailed error message when a
-      non-zero RtAudioErrorType is returned by a function. This is the
-      same message sent to the user-provided errorCallback function.
-    */
-    const std::string getErrorText(void);
-
-    //! Returns true if a stream is open and false if not.
-    bool isStreamOpen(void) const;
-
-    //! Returns true if the stream is running and false if it is stopped or not open.
-    bool isStreamRunning(void) const;
-
-    //! Returns the number of seconds of processed data since the stream was started.
-    /*!
-      The stream time is calculated from the number of sample frames
-      processed by the underlying audio system, which will increment by
-      units of the audio buffer size. It is not an absolute running
-      time. If a stream is not open, the returned value may not be
-      valid.
-    */
-    double getStreamTime(void);
-
-    //! Set the stream time to a time in seconds greater than or equal to 0.0.
-    void setStreamTime(double time);
-
-    //! Returns the internal stream latency in sample frames.
-    /*!
-      The stream latency refers to delay in audio input and/or output
-      caused by internal buffering by the audio system and/or hardware.
-      For duplex streams, the returned value will represent the sum of
-      the input and output latencies.  If a stream is not open, the
-      returned value will be invalid.  If the API does not report
-      latency, the return value will be zero.
-    */
-    long getStreamLatency(void);
-
-    //! Returns actual sample rate in use by the (open) stream.
-    /*!
-      On some systems, the sample rate used may be slightly different
-      than that specified in the stream parameters.  If a stream is not
-      open, a value of zero is returned.
-    */
-    unsigned int getStreamSampleRate(void);
-
-    //! Set a client-defined function that will be invoked when an error or warning occurs.
-    void setErrorCallback(RtAudioErrorCallback errorCallback);
-
-    //! Specify whether warning messages should be output or not.
-    /*!
-      The default behaviour is for warning messages to be output,
-      either to a client-defined error callback function (if specified)
-      or to stderr.
-    */
-    void showWarnings(bool value = true);
-
-    RtAudioErrorType openAsioControlPanel(void);
-
-protected:
-
-    void openRtApi(RtAudio::Api api);
-    RtApi* rtapi_;
 };
 
 // Operating system dependent thread functionality.
@@ -722,6 +546,7 @@ public:
 
     void setErrorCallback(RtAudioErrorCallback errorCallback) { errorCallback_ = errorCallback; }
     void showWarnings(bool value) { showWarnings_ = value; }
+    const std::string& getErrorText(void) const;
 protected:
     std::ostringstream errorStream_;
     RtAudioErrorCallback errorCallback_ = nullptr;
@@ -918,6 +743,7 @@ public:
 
     double getStreamTime(void) const { return stream_.streamTime; }
     void tickStreamTime(void) { stream_.streamTime += (stream_.bufferSize * 1.0 / stream_.sampleRate); }
+    unsigned int getBufferSize(void) const;
 protected:
     RtApi::RtApiStream stream_;
 };
@@ -930,38 +756,6 @@ public:
     virtual std::shared_ptr<RtApiStreamClass> createStream(const std::string& busId, RtApi::StreamMode mode, unsigned int channels, unsigned int sampleRate, RtAudioFormat format, unsigned int bufferSize, RtAudioCallback callback,
         void* userData, RtAudio::StreamOptions* options) = 0;
 };
-
-// **************************************************************** //
-//
-// Inline RtAudio definitions.
-//
-// **************************************************************** //
-
-inline RtAudio::Api RtAudio::getCurrentApi(void) { if (rtapi_)return rtapi_->getCurrentApi(); return RtAudio::UNSPECIFIED; }
-inline RtAudio::DeviceInfo RtAudio::getDeviceInfoByBusID(std::string busID) { return rtapi_->getDeviceInfoByBusID(busID); }
-inline std::vector<RtAudio::DeviceInfo> RtAudio::getDeviceInfosNoProbe(void) { return rtapi_->getDeviceInfosNoProbe(); }
-inline void RtAudio::closeStream(void) { return rtapi_->closeStream(); }
-inline RtAudioErrorType RtAudio::startStream(void) { return rtapi_->startStream(); }
-inline RtAudioErrorType RtAudio::stopStream(void) { return rtapi_->stopStream(); }
-inline RtAudioErrorType RtAudio::abortStream(void) { return rtapi_->abortStream(); }
-inline RtAudioErrorType RtAudio::registerExtraCallback(RtAudioDeviceCallback callback, void* userData)
-{
-    return rtapi_->registerExtraCallback(callback, userData);
-}
-inline RtAudioErrorType RtAudio::unregisterExtraCallback()
-{
-    return rtapi_->unregisterExtraCallback();
-}
-inline const std::string RtAudio::getErrorText(void) { return rtapi_->getErrorText(); }
-inline bool RtAudio::isStreamOpen(void) const { return rtapi_->isStreamOpen(); }
-inline bool RtAudio::isStreamRunning(void) const { return rtapi_->isStreamRunning(); }
-inline long RtAudio::getStreamLatency(void) { return rtapi_->getStreamLatency(); }
-inline unsigned int RtAudio::getStreamSampleRate(void) { return rtapi_->getStreamSampleRate(); }
-inline double RtAudio::getStreamTime(void) { return rtapi_->getStreamTime(); }
-inline void RtAudio::setStreamTime(double time) { return rtapi_->setStreamTime(time); }
-inline void RtAudio::setErrorCallback(RtAudioErrorCallback errorCallback) { rtapi_->setErrorCallback(errorCallback); }
-inline void RtAudio::showWarnings(bool value) { rtapi_->showWarnings(value); }
-inline RtAudioErrorType RtAudio::openAsioControlPanel(void) { return rtapi_->openAsioControlPanel(); };
 #endif
 
 // Indentation settings for Vim and Emacs

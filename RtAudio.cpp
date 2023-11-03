@@ -5,6 +5,8 @@
 #include "RtAudio.h"
 #include "RtAudio.h"
 #include "RtAudio.h"
+#include "RtAudio.h"
+#include "RtAudio.h"
 /************************************************************************/
 /*! \class RtAudio
     \brief Realtime audio i/o C++ classes.
@@ -244,93 +246,9 @@ RtAudio::Api RtAudio :: getCompiledApiByDisplayName( const std::string &name )
   return RtAudio::UNSPECIFIED;
 }
 
-void RtAudio :: openRtApi( RtAudio::Api api )
+const std::string& ErrorBase::getErrorText(void) const
 {
-  if ( rtapi_ )
-    delete rtapi_;
-  rtapi_ = 0;
-
-#if defined(__UNIX_JACK__)
-  if ( api == UNIX_JACK )
-    rtapi_ = new RtApiJack();
-#endif
-#if defined(__LINUX_ALSA__)
-  if ( api == LINUX_ALSA )
-    rtapi_ = new RtApiAlsa();
-#endif
-#if defined(__LINUX_PULSE__)
-  if ( api == LINUX_PULSE )
-    rtapi_ = new RtApiPulse();
-#endif
-#if defined(__WINDOWS_ASIO__)
-  if ( api == WINDOWS_ASIO )
-    rtapi_ = new RtApiAsio();
-#endif
-#if defined(__WINDOWS_WASAPI__)
-  //if ( api == WINDOWS_WASAPI )
-    //rtapi_ = new RtApiWasapi();
-#endif
-#if defined(__MACOSX_CORE__)
-  if ( api == MACOSX_CORE )
-    rtapi_ = new RtApiCore();
-#endif
-#if defined(__RTAUDIO_DUMMY__)
-  if ( api == RTAUDIO_DUMMY )
-    rtapi_ = new RtApiDummy();
-#endif
-}
-
-RtAudio :: RtAudio( RtAudio::Api api, RtAudioErrorCallback&& errorCallback )
-{
-  rtapi_ = 0;
-
-  std::string errorMessage;
-  if ( api != UNSPECIFIED ) {
-    // Attempt to open the specified API.
-    openRtApi( api );
-
-    if ( rtapi_ ) {
-      if ( errorCallback ) rtapi_->setErrorCallback( errorCallback );
-      return;
-    }
-
-    // No compiled support for specified API value.  Issue a warning
-    // and continue as if no API was specified.
-    errorMessage = "RtAudio: no compiled support for specified API argument!";
-    if ( errorCallback )
-      errorCallback( RTAUDIO_INVALID_USE, errorMessage );
-    else
-      std::cerr << '\n' << errorMessage << '\n' << std::endl;
-  }
-
-  // It should not be possible to get here because the preprocessor
-  // definition __RTAUDIO_DUMMY__ is automatically defined in RtAudio.h
-  // if no API-specific definitions are passed to the compiler. But just
-  // in case something weird happens, issue an error message and abort.
-  errorMessage = "RtAudio: no compiled API support found ... critical error!";
-  if ( errorCallback )
-    errorCallback( RTAUDIO_INVALID_USE, errorMessage );
-  else
-    std::cerr << '\n' << errorMessage << '\n' << std::endl;
-  abort();
-}
-
-RtAudio :: ~RtAudio()
-{
-  if ( rtapi_ )
-    delete rtapi_;
-}
-
-RtAudioErrorType RtAudio :: openStream( RtAudio::StreamParameters *outputParameters,
-                                        RtAudio::StreamParameters *inputParameters,
-                                        RtAudioFormat format, unsigned int sampleRate,
-                                        unsigned int *bufferFrames,
-                                        RtAudioCallback callback, void *userData,
-                                        RtAudio::StreamOptions *options )
-{
-  return rtapi_->openStream( outputParameters, inputParameters, format,
-                             sampleRate, bufferFrames, callback,
-                             userData, options );
+    return errorText_;
 }
 
 RtAudioErrorType ErrorBase::error(RtAudioErrorType type, const std::string& message)
@@ -380,7 +298,6 @@ RtAudioErrorType ErrorBase::error(RtAudioErrorType type)
         std::cerr << '\n' << errorText_ << "\n\n";
     return type;
 }
-
 
 std::shared_ptr<RtApiEnumerator> RtAudio::GetRtAudioEnumerator(RtAudio::Api api) {
 #if defined(__UNIX_JACK__)
@@ -1079,6 +996,11 @@ RtApiStreamClass::~RtApiStreamClass()
 bool RtApiStreamClass::isStreamRunning() {
     MutexRaii<StreamMutex> lock(stream_.mutex);
     return stream_.state == RtApi::StreamState::STREAM_RUNNING;
+}
+
+unsigned int RtApiStreamClass::getBufferSize(void) const
+{
+    return stream_.bufferSize;
 }
 
 /*
