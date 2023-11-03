@@ -21,11 +21,11 @@ RtAudioFormat GetRtFormatFromString(const std::string& format_str) {
     if (format_str == "FLOAT32") {
         return RTAUDIO_FLOAT32;
     }
+    if (format_str == "SINT8") {
+        return RTAUDIO_SINT8;
+    }
     if (format_str == "SINT32") {
         return RTAUDIO_SINT32;
-    }
-    if (format_str == "SINT24") {
-        return RTAUDIO_SINT24;
     }
     if (format_str == "FLOAT64") {
         return RTAUDIO_FLOAT64;
