@@ -10,6 +10,7 @@
 #include "RtAudio.h"
 #include <iostream>
 #include <map>
+#include "cliutils.h"
 
 void usage(void) {
     // Error function in case of incorrect command-line
@@ -48,50 +49,14 @@ void listDevices(std::shared_ptr<RtApiEnumerator> enumerator)
     }
 
     for (auto& d : devices) {
-        if (prober->probeDevice(d) == false) {
+        auto info_opt = prober->probeDevice(d.busID);
+        if (!info_opt) {
             std::cout << "\Failed to probe " << d.name << std::endl;
             continue;
         }
-        std::cout << "\nDevice Name = " << d.name << '\n';
-        std::cout << "Device Bus ID = " << d.busID << '\n';
-        std::cout << "Output Channels = " << d.outputChannels << '\n';
-        std::cout << "Input Channels = " << d.inputChannels << '\n';
-        std::cout << "Duplex Channels = " << d.duplexChannels << '\n';
-        std::cout << "Supports input: " << (d.supportsInput ? "true" : "false") << '\n';
-        std::cout << "Supports output: " << (d.supportsOutput ? "true" : "false") << '\n';
-        if (d.isDefaultOutput) std::cout << "This is the default output device.\n";
-        else std::cout << "This is NOT the default output device.\n";
-        if (d.isDefaultInput) std::cout << "This is the default input device.\n";
-        else std::cout << "This is NOT the default input device.\n";
-        if (d.nativeFormats == 0)
-            std::cout << "No natively supported data formats(?)!";
-        else {
-            std::cout << "Natively supported data formats:\n";
-            if (d.nativeFormats & RTAUDIO_SINT8)
-                std::cout << "  8-bit int\n";
-            if (d.nativeFormats & RTAUDIO_SINT16)
-                std::cout << "  16-bit int\n";
-            if (d.nativeFormats & RTAUDIO_SINT24)
-                std::cout << "  24-bit int\n";
-            if (d.nativeFormats & RTAUDIO_SINT32)
-                std::cout << "  32-bit int\n";
-            if (d.nativeFormats & RTAUDIO_FLOAT32)
-                std::cout << "  32-bit float\n";
-            if (d.nativeFormats & RTAUDIO_FLOAT64)
-                std::cout << "  64-bit float\n";
-        }
-        if (d.sampleRates.size() < 1)
-            std::cout << "No supported sample rates found!";
-        else {
-            std::cout << "Supported sample rates = ";
-            for (unsigned int j = 0; j < d.sampleRates.size(); j++)
-                std::cout << d.sampleRates[j] << " ";
-        }
-        std::cout << std::endl;
-        if (d.preferredSampleRate == 0)
-            std::cout << "No preferred sample rate found!" << std::endl;
-        else
-            std::cout << "Preferred sample rate = " << d.preferredSampleRate << std::endl;
+        auto info = info_opt.value();
+        std::cout << "\n\n";
+        print_device(info);
     }
 }
 

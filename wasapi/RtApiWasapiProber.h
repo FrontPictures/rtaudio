@@ -7,7 +7,7 @@ public:
     ~RtApiWasapiProber() {}
 
     RtAudio::Api getCurrentApi(void) override { return RtAudio::WINDOWS_WASAPI; }
-    bool probeDevice(RtAudio::DeviceInfo& info) override;
+    std::optional<RtAudio::DeviceInfo> probeDevice(const std::string& busId) override;
 
 private:
     void probeFormats(const UNIQUE_FORMAT& deviceFormat, RtAudio::DeviceInfo& info);

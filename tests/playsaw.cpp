@@ -129,7 +129,7 @@ int main(int argc, char* argv[])
         return 1;
     }
     std::cout << "Devices:" << std::endl;
-    RtAudio::DeviceInfo selectedDevice{};
+    std::optional<RtAudio::DeviceInfoPartial> selectedDevice;
     for (auto& d : devices) {
         bool thisDevice = d.name == params.getParamValue("device", argv, argc);
         if (thisDevice) {
@@ -151,7 +151,7 @@ int main(int argc, char* argv[])
         std::cout << ")" << std::endl;
     }
     std::cout << std::endl;
-    if (selectedDevice.busID.empty()) {
+    if (!selectedDevice) {
         std::cout << "No device found" << std::endl;
         return 1;
     }
@@ -169,28 +169,29 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    if (prober->probeDevice(selectedDevice) == false) {
+    auto info = prober->probeDevice(selectedDevice->busID);
+    if (!info) {
         std::cout << "\nFailed to probe device\n";
         return 1;
     }
 
-    if (selectedDevice.outputChannels == 0) {
+    if (info->outputChannels == 0) {
         std::cout << "This is no output device" << std::endl;
         return 1;
     }
 
     if (channels == 0) {
-        channels = selectedDevice.outputChannels;
+        channels = info->outputChannels;
     }
 
     if (fs == 0) {
-        fs = selectedDevice.preferredSampleRate;
+        fs = info->preferredSampleRate;
     }
-    if (vector_contains(selectedDevice.sampleRates, fs) == false) {
+    if (vector_contains(info->sampleRates, fs) == false) {
         std::cout << "Samplerate not supported" << std::endl;
         return 1;
     }
-    print_device(selectedDevice);
+    print_device(info.value());
     std::cout << std::endl;
     std::cout << "Play samplerate: " << fs << std::endl;
 
@@ -220,7 +221,7 @@ int main(int argc, char* argv[])
     }
 
     for (int iter = 0; iter < retries;) {
-        auto stream = factory->createStream(selectedDevice.busID, RtApi::OUTPUT, channels, fs, format, bufferFrames, produceAudio, &userData, &options);
+        auto stream = factory->createStream(info->partial.busID, RtApi::OUTPUT, channels, fs, format, bufferFrames, produceAudio, &userData, &options);
         if (!stream) {
             std::cout << "\nFailed to create stream!\n";
             continue;

@@ -83,6 +83,7 @@
 #include <vector>
 #include <iostream>
 #include <functional>
+#include <optional>
 
  /*! \typedef typedef unsigned long RtAudioFormat;
      \brief RtAudio data format type.
@@ -284,7 +285,7 @@ class RtApiSystemCallback;
 
 class RTAUDIO_DLL_PUBLIC RtAudio
 {
-public:    
+public:
     //! Audio API specifier arguments.
     enum Api {
         UNSPECIFIED,    /*!< Search for a working compiled API. */
@@ -307,13 +308,14 @@ public:
     static std::shared_ptr<RtApiSystemCallback> GetRtAudioSystemCallback(RtAudio::Api api, RtAudioDeviceCallbackLambda callback);
 
     struct DeviceInfoPartial {
-        
+        std::string name;               /*!< Character string device name. */
+        std::string busID;              /*!< Unique ID of device bus. */
+        bool supportsOutput = false;
+        bool supportsInput = false;
     };
     //! The public device information structure for returning queried values.
     struct DeviceInfo {
-        unsigned int ID{};              /*!< Device ID used to specify a device to RtAudio. */
-        std::string name;               /*!< Character string device name. */
-        std::string busID;              /*!< Unique ID of device bus. */
+        DeviceInfoPartial partial{};
         unsigned int outputChannels{};  /*!< Maximum output channels supported by device. */
         unsigned int inputChannels{};   /*!< Maximum input channels supported by device. */
         unsigned int duplexChannels{};  /*!< Maximum simultaneous input/output channels supported by device. */
@@ -323,8 +325,6 @@ public:
         unsigned int currentSampleRate{};   /*!< Current sample rate, system sample rate as currently configured. */
         unsigned int preferredSampleRate{}; /*!< Preferred sample rate, e.g. for WASAPI the system sample rate. */
         RtAudioFormat nativeFormats{};  /*!< Bit mask of supported data formats. */
-        bool supportsOutput = false;
-        bool supportsInput = false;
     };
 
     //! The structure for specifying input or output stream parameters.
@@ -736,7 +736,7 @@ private:
 class RTAUDIO_DLL_PUBLIC RtApiEnumerator : public ErrorBase {
 public:
     virtual RtAudio::Api getCurrentApi(void) = 0;
-    virtual std::vector<RtAudio::DeviceInfo> listDevices(void) = 0;
+    virtual std::vector<RtAudio::DeviceInfoPartial> listDevices(void) = 0;
 };
 
 class RTAUDIO_DLL_PUBLIC RtApiProber : public ErrorBase {
@@ -744,7 +744,7 @@ public:
     RtApiProber() {}
     virtual ~RtApiProber() {}
     virtual RtAudio::Api getCurrentApi(void) = 0;
-    virtual bool probeDevice(RtAudio::DeviceInfo& info) = 0;
+    virtual std::optional<RtAudio::DeviceInfo> probeDevice(const std::string& busId) = 0;
 };
 
 class RTAUDIO_DLL_PUBLIC RtApiSystemCallback : public ErrorBase {

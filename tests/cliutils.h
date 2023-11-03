@@ -101,8 +101,8 @@ bool vector_contains(const std::vector<T>& vec, const T& val) {
 }
 
 void print_device(RtAudio::DeviceInfo selectedDevice) {
-    std::cout << "Name: " << selectedDevice.name << std::endl;
-    std::cout << "BusID: " << selectedDevice.busID << std::endl;
+    std::cout << "Name: " << selectedDevice.partial.name << std::endl;
+    std::cout << "BusID: " << selectedDevice.partial.busID << std::endl;
     std::cout << "Input channels: " << selectedDevice.inputChannels << std::endl;
     std::cout << "Output channels: " << selectedDevice.outputChannels << std::endl;
     std::cout << "Native samplerate: " << selectedDevice.preferredSampleRate << std::endl;

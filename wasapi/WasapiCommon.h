@@ -4,6 +4,8 @@
 #include <mmdeviceapi.h>
 #include <functional>
 #include <memory>
+#include <optional>
+#include <string>
 
 #define SMART_PTR_WRAPPER(ptr_type, datatype, remove) ptr_type<datatype, remove>
 #define UNIQUE_WRAPPER(type, remove) SMART_PTR_WRAPPER(std::unique_ptr, type, remove)
@@ -66,3 +68,5 @@ public:
 private:
     bool coInitialized_ = false;
 };
+
+std::optional<std::string> probeWasapiDeviceName(IMMDevice* devicePtr);

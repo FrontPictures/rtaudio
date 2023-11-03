@@ -1,4 +1,6 @@
 #include "WasapiCommon.h"
+#include "utils.h"
+#include <functiondiscoverykeys_devpkey.h>
 
 RtApiWasapiCommon::RtApiWasapiCommon()
 {
@@ -31,4 +33,19 @@ PROPVARIANT* PROPVARIANT_Raii::operator&() {
 
 const PROPVARIANT PROPVARIANT_Raii::get() const {
     return mPropVal;
+}
+
+std::optional<std::string> probeWasapiDeviceName(IMMDevice* devicePtr)
+{
+    Microsoft::WRL::ComPtr<IPropertyStore> devicePropStore;
+    PROPVARIANT_Raii deviceNameProp;
+    HRESULT hr = devicePtr->OpenPropertyStore(STGM_READ, &devicePropStore);
+    if (FAILED(hr)) {        
+        return {};
+    }
+    hr = devicePropStore->GetValue(PKEY_Device_FriendlyName, &deviceNameProp);
+    if (FAILED(hr) || deviceNameProp.get().pwszVal == nullptr) {        
+        return {};
+    }
+    return convertCharPointerToStdString(deviceNameProp.get().pwszVal);
 }

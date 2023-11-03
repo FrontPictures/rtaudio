@@ -9,7 +9,5 @@ public:
     RtApiWasapiEnumerator() {}
     ~RtApiWasapiEnumerator() {}
     RtAudio::Api getCurrentApi(void) override { return RtAudio::WINDOWS_WASAPI; }
-    virtual std::vector<RtAudio::DeviceInfo> listDevices(void) override;
-private:
-    std::optional<std::string> probeDeviceName(IMMDevice* devicePtr);
+    virtual std::vector<RtAudio::DeviceInfoPartial> listDevices(void) override;
 };

@@ -2,41 +2,69 @@
 #include <audioclient.h>
 #include "utils.h"
 
-bool RtApiWasapiProber::probeDevice(RtAudio::DeviceInfo& info)
+std::optional<RtAudio::DeviceInfo> RtApiWasapiProber::probeDevice(const std::string& busId)
 {
     Microsoft::WRL::ComPtr<IMMDevice> devicePtr;
     Microsoft::WRL::ComPtr<IAudioClient> audioClient;
+    Microsoft::WRL::ComPtr<IMMEndpoint> deviceEndpointPtr;
+    RtAudio::DeviceInfo info{};
 
     UNIQUE_FORMAT deviceFormat = MAKE_UNIQUE_FORMAT_EMPTY;
     HRESULT res = S_OK;
     RtAudioErrorType errorType = RTAUDIO_DRIVER_ERROR;
 
-    auto device_id = convertStdStringToWString(info.busID);
+    auto device_id = convertStdStringToWString(busId);
 
     HRESULT hr = deviceEnumerator_->GetDevice(device_id.c_str(), &devicePtr);
     if (FAILED(hr)) {
         error(errorType, "RtApiWasapi::probeDeviceInfo: Unable to retrieve device handle.");
-        return false;
+        return {};
+    }
+
+    hr = devicePtr->QueryInterface(__uuidof(IMMEndpoint), (void**)deviceEndpointPtr.GetAddressOf());
+    if (FAILED(hr)) {
+        error(RTAUDIO_WARNING, "RtApiWasapi::probeDevices: Unable to retreive audio IMMEndpoint.");
+        return {};
+    }
+    EDataFlow flow = eRender;
+    hr = deviceEndpointPtr->GetDataFlow(&flow);
+    if (FAILED(hr)) {
+        error(RTAUDIO_WARNING, "RtApiWasapi::probeDevices: Unable to get data flow.");
+        return {};
+    }
+
+    if (flow == eRender) {
+        info.partial.supportsOutput = true;
+    }
+    else if (flow == eCapture) {
+        info.partial.supportsInput = true;
     }
 
     hr = devicePtr->Activate(__uuidof(IAudioClient), CLSCTX_ALL, NULL, (void**)&audioClient);
     if (FAILED(hr)) {
         error(errorType, "RtApiWasapi::probeDeviceInfo: Unable to retrieve device audio client.");
-        return false;
+        return {};
     }
 
     res = CONSTRUCT_UNIQUE_FORMAT(audioClient->GetMixFormat, deviceFormat);
     if (FAILED(hr)) {
         error(errorType, "RtApiWasapi::probeDeviceInfo: Unable to retrieve device mix format.");
-        return false;
+        return {};
     }
 
+    auto name_opt = probeWasapiDeviceName(devicePtr.Get());
+    if (!name_opt) {
+        return {};
+    }
+    info.partial.name = *name_opt;
+    info.partial.busID = busId;
     info.duplexChannels = 0;
-    if (info.supportsInput) {
+
+    if (info.partial.supportsInput) {
         info.inputChannels = deviceFormat->nChannels;
         info.outputChannels = 0;
     }
-    else if (info.supportsOutput) {
+    else if (info.partial.supportsOutput) {
         info.inputChannels = 0;
         info.outputChannels = deviceFormat->nChannels;
     }
@@ -47,7 +75,7 @@ bool RtApiWasapiProber::probeDevice(RtAudio::DeviceInfo& info)
 
     info.nativeFormats = 0;
     probeFormats(deviceFormat, info);
-    return true;
+    return info;
 }
 
 void RtApiWasapiProber::probeFormats(const UNIQUE_FORMAT& deviceFormat, RtAudio::DeviceInfo& info)

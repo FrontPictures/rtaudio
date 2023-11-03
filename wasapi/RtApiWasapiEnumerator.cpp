@@ -4,10 +4,10 @@
 
 #include <functiondiscoverykeys_devpkey.h>
 
-std::vector<RtAudio::DeviceInfo> RtApiWasapiEnumerator::listDevices(void)
+std::vector<RtAudio::DeviceInfoPartial> RtApiWasapiEnumerator::listDevices(void)
 {
     if (!deviceEnumerator_) return {};
-    std::vector<RtAudio::DeviceInfo> res;
+    std::vector<RtAudio::DeviceInfoPartial> res;
 
     unsigned int nDevices = 0;
     Microsoft::WRL::ComPtr<IMMDeviceCollection> deviceCollection;
@@ -47,7 +47,7 @@ std::vector<RtAudio::DeviceInfo> RtApiWasapiEnumerator::listDevices(void)
         }
         auto id_str = convertCharPointerToStdString(deviceId);
         CoTaskMemFree(deviceId);
-        RtAudio::DeviceInfo info;
+        RtAudio::DeviceInfoPartial info;
 
         hr = devicePtr->QueryInterface(__uuidof(IMMEndpoint), (void**)deviceEndpointPtr.GetAddressOf());
         if (FAILED(hr)) {
@@ -69,7 +69,7 @@ std::vector<RtAudio::DeviceInfo> RtApiWasapiEnumerator::listDevices(void)
         }
         info.busID = id_str;
 
-        auto name_opt = probeDeviceName(devicePtr.Get());
+        auto name_opt = probeWasapiDeviceName(devicePtr.Get());
         if (!name_opt) {
             continue;
         }
@@ -77,21 +77,4 @@ std::vector<RtAudio::DeviceInfo> RtApiWasapiEnumerator::listDevices(void)
         res.push_back(info);
     }
     return res;
-}
-
-std::optional<std::string> RtApiWasapiEnumerator::probeDeviceName(IMMDevice* devicePtr)
-{
-    Microsoft::WRL::ComPtr<IPropertyStore> devicePropStore;
-    PROPVARIANT_Raii deviceNameProp;
-    HRESULT hr = devicePtr->OpenPropertyStore(STGM_READ, &devicePropStore);
-    if (FAILED(hr)) {
-        error(RTAUDIO_DRIVER_ERROR, "RtApiWasapi::probeDeviceInfo: Unable to open device property store.");
-        return {};
-    }
-    hr = devicePropStore->GetValue(PKEY_Device_FriendlyName, &deviceNameProp);
-    if (FAILED(hr) || deviceNameProp.get().pwszVal == nullptr) {
-        error(RTAUDIO_DRIVER_ERROR, "RtApiWasapi::probeDeviceInfo: Unable to retrieve device property: PKEY_Device_FriendlyName.");
-        return {};
-    }
-    return convertCharPointerToStdString(deviceNameProp.get().pwszVal);
 }

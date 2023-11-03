@@ -542,7 +542,7 @@ std::vector<RtAudio::DeviceInfo> RtApi::getDeviceInfosNoProbe(void)
 RtAudio::DeviceInfo RtApi::getDeviceInfoByBusID(std::string busID)
 {    
     for (unsigned int m = 0; m < deviceList_.size(); m++) {
-        if (deviceList_[m].busID == busID) {
+        if (deviceList_[m].partial.busID == busID) {
             if (probeSingleDeviceInfo(deviceList_[m])==false) {
                 break;
             }
