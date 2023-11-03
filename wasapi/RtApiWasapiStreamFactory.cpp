@@ -142,7 +142,7 @@ namespace {
     }
 }
 
-std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(RtAudio::DeviceInfo device, RtApi::StreamMode mode, unsigned int channels, unsigned int sampleRate, RtAudioFormat format, unsigned int bufferSize, RtAudioCallback callback,
+std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(const std::string& busId, RtApi::StreamMode mode, unsigned int channels, unsigned int sampleRate, RtAudioFormat format, unsigned int bufferSize, RtAudioCallback callback,
     void* userData, RtAudio::StreamOptions* options)
 {
     if (!deviceEnumerator_)
@@ -156,8 +156,8 @@ std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(RtAudio
     UNIQUE_EVENT streamEvent = MAKE_UNIQUE_EVENT_EMPTY;
     long long streamLatency = 0;
     AUDCLNT_SHAREMODE shareMode = AUDCLNT_SHAREMODE_SHARED;
-
-    std::wstring temp = std::wstring(device.busID.begin(), device.busID.end());
+    
+    std::wstring temp = std::wstring(busId.begin(), busId.end());
     HRESULT hr = deviceEnumerator_->GetDevice((LPWSTR)temp.c_str(), &devicePtr);
     if (FAILED(hr)) {
         error(RTAUDIO_SYSTEM_ERROR, "RtApiWasapi::probeDeviceOpen: Unable to retrieve device handle.");
@@ -299,7 +299,7 @@ std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(RtAudio
 
     RtApi::RtApiStream stream_{};
     stream_.mode = mode;
-    stream_.deviceId[mode] = device.busID;
+    stream_.deviceId[mode] = busId;
     stream_.doByteSwap[mode] = false;
     stream_.sampleRate = sampleRate;
     stream_.bufferSize = bufferSize;

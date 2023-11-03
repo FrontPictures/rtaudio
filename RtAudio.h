@@ -306,6 +306,9 @@ public:
 
     static std::shared_ptr<RtApiSystemCallback> GetRtAudioSystemCallback(RtAudio::Api api, RtAudioDeviceCallbackLambda callback);
 
+    struct DeviceInfoPartial {
+        
+    };
     //! The public device information structure for returning queried values.
     struct DeviceInfo {
         unsigned int ID{};              /*!< Device ID used to specify a device to RtAudio. */
@@ -924,7 +927,7 @@ public:
     RtApiStreamClassFactory() {}
     virtual ~RtApiStreamClassFactory() {}
     virtual RtAudio::Api getCurrentApi(void) = 0;
-    virtual std::shared_ptr<RtApiStreamClass> createStream(RtAudio::DeviceInfo device, RtApi::StreamMode mode, unsigned int channels, unsigned int sampleRate, RtAudioFormat format, unsigned int bufferSize, RtAudioCallback callback,
+    virtual std::shared_ptr<RtApiStreamClass> createStream(const std::string& busId, RtApi::StreamMode mode, unsigned int channels, unsigned int sampleRate, RtAudioFormat format, unsigned int bufferSize, RtAudioCallback callback,
         void* userData, RtAudio::StreamOptions* options) = 0;
 };
 

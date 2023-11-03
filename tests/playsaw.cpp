@@ -220,7 +220,7 @@ int main(int argc, char* argv[])
     }
 
     for (int iter = 0; iter < retries;) {
-        auto stream = factory->createStream(selectedDevice, RtApi::OUTPUT, channels, fs, format, bufferFrames, produceAudio, &userData, &options);
+        auto stream = factory->createStream(selectedDevice.busID, RtApi::OUTPUT, channels, fs, format, bufferFrames, produceAudio, &userData, &options);
         if (!stream) {
             std::cout << "\nFailed to create stream!\n";
             continue;

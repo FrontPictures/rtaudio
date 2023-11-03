@@ -7,7 +7,7 @@ public:
     RtApiWasapiStreamFactory() {}
     ~RtApiWasapiStreamFactory() {}
     RtAudio::Api getCurrentApi(void) override { return RtAudio::WINDOWS_WASAPI; }
-    std::shared_ptr<RtApiStreamClass> createStream(RtAudio::DeviceInfo device, RtApi::StreamMode mode, unsigned int channels, unsigned int sampleRate, RtAudioFormat format, unsigned int bufferSize, RtAudioCallback callback,
+    std::shared_ptr<RtApiStreamClass> createStream(const std::string& busId, RtApi::StreamMode mode, unsigned int channels, unsigned int sampleRate, RtAudioFormat format, unsigned int bufferSize, RtAudioCallback callback,
         void* userData, RtAudio::StreamOptions* options) override;
 private:
 };
