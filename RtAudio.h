@@ -327,14 +327,6 @@ public:
         RtAudioFormat nativeFormats{};  /*!< Bit mask of supported data formats. */
     };
 
-    //! The structure for specifying input or output stream parameters.
-    struct StreamParameters {
-        //std::string deviceName{};     /*!< Device name from device list. */
-        std::string deviceId{};     /*!< Device id as provided by getDeviceIds(). */
-        unsigned int nChannels{};    /*!< Number of channels. */
-        unsigned int firstChannel{}; /*!< First channel index on device (default = 0). */
-    };
-
     //! The structure for specifying stream options.
     /*!
       The following flags can be OR'ed together to allow a client to
@@ -491,25 +483,11 @@ struct CallbackInfo {
     bool deviceDisconnected{ false };
 };
 
-// **************************************************************** //
-//
-// RtApi class declaration.
-//
-// Subclasses of RtApi contain all API- and OS-specific code necessary
-// to fully implement the RtAudio API.
-//
-// Note that RtApi is an abstract base class and cannot be
-// explicitly instantiated.  The class RtAudio will create an
-// instance of an RtApi subclass (RtApiOss, RtApiAlsa,
-// RtApiJack, RtApiCore, RtApiDs, or RtApiAsio).
-//
-// **************************************************************** //
-
 #pragma pack(push, 1)
 class S24 {
 
 protected:
-    unsigned char c3[3];
+    unsigned char c3[3]{};
 
 public:
     S24() {}
@@ -533,10 +511,6 @@ public:
     }
 };
 #pragma pack(pop)
-
-#if defined( HAVE_GETTIMEOFDAY )
-#include <sys/time.h>
-#endif
 
 #include <sstream>
 
@@ -582,34 +556,6 @@ public:
 class RTAUDIO_DLL_PUBLIC RtApi
 {
 public:
-    RtApi();
-    virtual ~RtApi();
-    virtual RtAudio::Api getCurrentApi(void) = 0;
-    std::vector<RtAudio::DeviceInfo> getDeviceInfosNoProbe(void);
-    RtAudio::DeviceInfo getDeviceInfoByBusID(std::string busID);
-    RtAudioErrorType openStream(RtAudio::StreamParameters* outputParameters,
-        RtAudio::StreamParameters* inputParameters,
-        RtAudioFormat format, unsigned int sampleRate,
-        unsigned int* bufferFrames, RtAudioCallback callback,
-        void* userData, RtAudio::StreamOptions* options);
-    virtual void closeStream(void);
-    virtual RtAudioErrorType startStream(void) = 0;
-    virtual RtAudioErrorType stopStream(void) = 0;
-    virtual RtAudioErrorType abortStream(void) = 0;
-    virtual RtAudioErrorType registerExtraCallback(RtAudioDeviceCallback callback, void* userData);
-    virtual RtAudioErrorType unregisterExtraCallback();
-    const std::string getErrorText(void) const { return errorText_; }
-    long getStreamLatency(void);
-    unsigned int getStreamSampleRate(void);
-    virtual double getStreamTime(void) const { return stream_.streamTime; }
-    virtual void setStreamTime(double time);
-    bool isStreamOpen(void) const { return stream_.state != STREAM_CLOSED; }
-    bool isStreamRunning(void) const { return stream_.state == STREAM_RUNNING; }
-    void setErrorCallback(RtAudioErrorCallback errorCallback) { errorCallback_ = errorCallback; }
-    void showWarnings(bool value) { showWarnings_ = value; }
-    virtual RtAudioErrorType openAsioControlPanel(void);
-    static unsigned int formatBytes(RtAudioFormat format);
-
     enum StreamMode {
         OUTPUT,
         INPUT,
@@ -658,76 +604,11 @@ public:
         CallbackInfo callbackInfo;
         ConvertInfo convertInfo[2];
         double streamTime;         // Number of elapsed seconds since the stream started.
-
-#if defined(HAVE_GETTIMEOFDAY)
-        struct timeval lastTickTimestamp;
-#endif
     };
 
+    static unsigned int formatBytes(RtAudioFormat format);
     static void convertBuffer(const RtApi::RtApiStream stream_, char* outBuffer, char* inBuffer, RtApi::ConvertInfo info, unsigned int samples, RtApi::StreamMode mode);
-
-protected:
-
-    static const unsigned int MAX_SAMPLE_RATES;
-    static const unsigned int SAMPLE_RATES[];
-
-    // A protected structure for audio streams.
-
-
-    typedef S24 Int24;
-    typedef signed short Int16;
-    typedef signed int Int32;
-    typedef float Float32;
-    typedef double Float64;
-
-    std::ostringstream errorStream_;
-    std::string errorText_;
-    RtAudioErrorCallback errorCallback_;
-    bool showWarnings_;
-    std::vector<RtAudio::DeviceInfo> deviceList_;
-    unsigned int currentDeviceId_;
-    RtApiStream stream_;
-
-    /*!
-    Protected, api-specific method that attempts to probe device
-    information and fill info with params
-    */
-    virtual bool probeSingleDeviceInfo(RtAudio::DeviceInfo& info) = 0;
-
-    /*!
-      Protected, api-specific method that attempts to list all device
-      in a system without probing.
-    */
-    virtual void listDevices(void) = 0;
-
-    /*!
-      Protected, api-specific method that attempts to open a device
-      with the given parameters.  This function MUST be implemented by
-      all subclasses.  If an error is encountered during the probe, a
-      "warning" message is reported and FAILURE is returned. A
-      successful probe is indicated by a return value of SUCCESS.
-    */
-    virtual bool probeDeviceOpen(const std::string& deviceId, StreamMode mode, unsigned int channels,
-        unsigned int firstChannel, unsigned int sampleRate,
-        RtAudioFormat format, unsigned int* bufferSize,
-        RtAudio::StreamOptions* options);
-
-    //! A protected function used to increment the stream time.
-    void tickStreamTime(void);
-
-    //! Protected common method to clear an RtApiStream structure.
-    void clearStreamInfo();
-
-    //! Protected common error method to allow global control over error handling.
-    RtAudioErrorType error(RtAudioErrorType type);
-
-    RtAudioErrorType errorText(RtAudioErrorType type, const std::string& errorText);
-
-    //! Protected common method used to perform byte-swapping on buffers.
-    void byteSwapBuffer(char* buffer, unsigned int samples, RtAudioFormat format);
-
-    //! Protected common method that sets up the parameters for buffer conversion.
-    void setConvertInfo(StreamMode mode, unsigned int firstChannel);
+    static void byteSwapBuffer(char* buffer, unsigned int samples, RtAudioFormat format);
 };
 
 class RTAUDIO_DLL_PUBLIC RtApiStreamClass : public ErrorBase {
@@ -757,12 +638,3 @@ public:
         void* userData, RtAudio::StreamOptions* options) = 0;
 };
 #endif
-
-// Indentation settings for Vim and Emacs
-//
-// Local Variables:
-// c-basic-offset: 2
-// indent-tabs-mode: nil
-// End:
-//
-// vim: et sts=2 sw=2

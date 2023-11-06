@@ -66,17 +66,11 @@
 #endif
 
 // Static variable definitions.
-const unsigned int RtApi::MAX_SAMPLE_RATES = 16;
-const unsigned int RtApi::SAMPLE_RATES[] = {
+const unsigned int MAX_SAMPLE_RATES = 16;
+const unsigned int SAMPLE_RATES[] = {
   4000, 5512, 8000, 9600, 11025, 16000, 22050,
   32000, 44100, 48000, 64000, 88200, 96000, 128000, 176400, 192000
 };
-
-// *************************************************** //
-//
-// RtApi subclass prototypes.
-//
-// *************************************************** //
 
 #if defined(__MACOSX_CORE__)
 
@@ -118,132 +112,97 @@ const unsigned int RtApi::SAMPLE_RATES[] = {
 
 #endif
 
-#if defined(__RTAUDIO_DUMMY__)
-
-class RtApiDummy: public RtApi
+std::string RtAudio::getVersion(void)
 {
-public:
-
-  RtApiDummy() { errorText_ = "RtApiDummy: This class provides no functionality."; error( RTAUDIO_WARNING ); }
-  RtAudio::Api getCurrentApi( void ) override { return RtAudio::RTAUDIO_DUMMY; }
-  void closeStream( void ) override {}
-  RtAudioErrorType startStream( void ) override { return RTAUDIO_NO_ERROR; }
-  RtAudioErrorType stopStream( void ) override { return RTAUDIO_NO_ERROR; }
-  RtAudioErrorType abortStream( void ) override { return RTAUDIO_NO_ERROR; }
-
-  private:
-
-  bool probeDeviceOpen( unsigned int /*deviceId*/, StreamMode /*mode*/, unsigned int /*channels*/, 
-                        unsigned int /*firstChannel*/, unsigned int /*sampleRate*/,
-                        RtAudioFormat /*format*/, unsigned int * /*bufferSize*/,
-                        RtAudio::StreamOptions * /*options*/ ) override { return false; }
-};
-
-#endif
-
-// *************************************************** //
-//
-// RtAudio definitions.
-//
-// *************************************************** //
-
-std::string RtAudio :: getVersion( void )
-{
-  return RTAUDIO_VERSION;
+    return RTAUDIO_VERSION;
 }
 
 // Define API names and display names.
 // Must be in same order as API enum.
 extern "C" {
-const char* rtaudio_api_names[][2] = {
-  { "unspecified" , "Unknown" },
-  { "core"        , "CoreAudio" },
-  { "alsa"        , "ALSA" },
-  { "jack"        , "Jack" },
-  { "pulse"       , "Pulse" },
-  { "asio"        , "ASIO" },
-  { "wasapi"      , "WASAPI" },
-  { "dummy"       , "Dummy" },
-};
+    const char* rtaudio_api_names[][2] = {
+      { "unspecified" , "Unknown" },
+      { "core"        , "CoreAudio" },
+      { "alsa"        , "ALSA" },
+      { "jack"        , "Jack" },
+      { "pulse"       , "Pulse" },
+      { "asio"        , "ASIO" },
+      { "wasapi"      , "WASAPI" },
+      { "dummy"       , "Dummy" },
+    };
 
-const unsigned int rtaudio_num_api_names = 
-  sizeof(rtaudio_api_names)/sizeof(rtaudio_api_names[0]);
+    const unsigned int rtaudio_num_api_names =
+        sizeof(rtaudio_api_names) / sizeof(rtaudio_api_names[0]);
 
-// The order here will control the order of RtAudio's API search in
-// the constructor.
-extern "C" const RtAudio::Api rtaudio_compiled_apis[] = {
-#if defined(__MACOSX_CORE__)
-  RtAudio::MACOSX_CORE,
-#endif
-#if defined(__LINUX_ALSA__)
-  RtAudio::LINUX_ALSA,
-#endif
-#if defined(__UNIX_JACK__)
-  RtAudio::UNIX_JACK,
-#endif
-#if defined(__LINUX_PULSE__)
-  RtAudio::LINUX_PULSE,
-#endif
-#if defined(__WINDOWS_ASIO__)
-  RtAudio::WINDOWS_ASIO,
-#endif
-#if defined(__WINDOWS_WASAPI__)
-  RtAudio::WINDOWS_WASAPI,
-#endif
-#if defined(__RTAUDIO_DUMMY__)
-  RtAudio::RTAUDIO_DUMMY,
-#endif
-  RtAudio::UNSPECIFIED,
-};
+    // The order here will control the order of RtAudio's API search in
+    // the constructor.
+    extern "C" const RtAudio::Api rtaudio_compiled_apis[] = {
+    #if defined(__MACOSX_CORE__)
+      RtAudio::MACOSX_CORE,
+    #endif
+    #if defined(__LINUX_ALSA__)
+      RtAudio::LINUX_ALSA,
+    #endif
+    #if defined(__UNIX_JACK__)
+      RtAudio::UNIX_JACK,
+    #endif
+    #if defined(__LINUX_PULSE__)
+      RtAudio::LINUX_PULSE,
+    #endif
+    #if defined(__WINDOWS_ASIO__)
+      RtAudio::WINDOWS_ASIO,
+    #endif
+    #if defined(__WINDOWS_WASAPI__)
+      RtAudio::WINDOWS_WASAPI,
+    #endif
+    #if defined(__RTAUDIO_DUMMY__)
+      RtAudio::RTAUDIO_DUMMY,
+    #endif
+      RtAudio::UNSPECIFIED,
+    };
 
-extern "C" const unsigned int rtaudio_num_compiled_apis =
-  sizeof(rtaudio_compiled_apis)/sizeof(rtaudio_compiled_apis[0])-1;
+    extern "C" const unsigned int rtaudio_num_compiled_apis =
+        sizeof(rtaudio_compiled_apis) / sizeof(rtaudio_compiled_apis[0]) - 1;
 }
 
-// This is a compile-time check that rtaudio_num_api_names == RtAudio::NUM_APIS.
-// If the build breaks here, check that they match.
-template<bool b> class StaticAssert { private: StaticAssert() {} };
-template<> class StaticAssert<true>{ public: StaticAssert() {} };
-class StaticAssertions { StaticAssertions() {
-  StaticAssert<rtaudio_num_api_names == RtAudio::NUM_APIS>();
-}};
+static_assert(rtaudio_num_api_names == RtAudio::NUM_APIS);
 
-void RtAudio :: getCompiledApi( std::vector<RtAudio::Api> &apis )
+void RtAudio::getCompiledApi(std::vector<RtAudio::Api>& apis)
 {
-  apis = std::vector<RtAudio::Api>(rtaudio_compiled_apis,
-                                   rtaudio_compiled_apis + rtaudio_num_compiled_apis);
+    apis = std::vector<RtAudio::Api>(rtaudio_compiled_apis,
+        rtaudio_compiled_apis + rtaudio_num_compiled_apis);
 }
 
-std::string RtAudio :: getApiName( RtAudio::Api api )
+std::string RtAudio::getApiName(RtAudio::Api api)
 {
-  if (api < 0 || api >= RtAudio::NUM_APIS)
-    return "";
-  return rtaudio_api_names[api][0];
+    if (api < 0 || api >= RtAudio::NUM_APIS)
+        return "";
+    return rtaudio_api_names[api][0];
 }
 
-std::string RtAudio :: getApiDisplayName( RtAudio::Api api )
+std::string RtAudio::getApiDisplayName(RtAudio::Api api)
 {
-  if (api < 0 || api >= RtAudio::NUM_APIS)
-    return "Unknown";
-  return rtaudio_api_names[api][1];
+    if (api < 0 || api >= RtAudio::NUM_APIS)
+        return "Unknown";
+    return rtaudio_api_names[api][1];
 }
 
-RtAudio::Api RtAudio :: getCompiledApiByName( const std::string &name )
+RtAudio::Api RtAudio::getCompiledApiByName(const std::string& name)
 {
-  unsigned int i=0;
-  for (i = 0; i < rtaudio_num_compiled_apis; ++i)
-    if (name == rtaudio_api_names[rtaudio_compiled_apis[i]][0])
-      return rtaudio_compiled_apis[i];
-  return RtAudio::UNSPECIFIED;
+    unsigned int i = 0;
+    for (i = 0; i < rtaudio_num_compiled_apis; ++i)
+        if (name == rtaudio_api_names[rtaudio_compiled_apis[i]][0])
+            return rtaudio_compiled_apis[i];
+    return RtAudio::UNSPECIFIED;
 }
 
-RtAudio::Api RtAudio :: getCompiledApiByDisplayName( const std::string &name )
+RtAudio::Api RtAudio::getCompiledApiByDisplayName(const std::string& name)
 {
-  unsigned int i=0;
-  for (i = 0; i < rtaudio_num_compiled_apis; ++i)
-    if (name == rtaudio_api_names[rtaudio_compiled_apis[i]][1])
-      return rtaudio_compiled_apis[i];
-  return RtAudio::UNSPECIFIED;
+    unsigned int i = 0;
+    for (i = 0; i < rtaudio_num_compiled_apis; ++i)
+        if (name == rtaudio_api_names[rtaudio_compiled_apis[i]][1])
+            return rtaudio_compiled_apis[i];
+    return RtAudio::UNSPECIFIED;
 }
 
 const std::string& ErrorBase::getErrorText(void) const
@@ -356,126 +315,6 @@ std::shared_ptr<RtApiSystemCallback> RtAudio::GetRtAudioSystemCallback(RtAudio::
         return std::make_shared<RtApiWasapiSystemCallback>(callback);
 #endif
     return {};
-}
-
-// *************************************************** //
-//
-// Public RtApi definitions (see end of file for
-// private or protected utility functions).
-//
-// *************************************************** //
-
-RtApi :: RtApi()
-{
-  clearStreamInfo();
-  MUTEX_INITIALIZE( &stream_.mutex );
-  errorCallback_ = 0;
-  showWarnings_ = true;
-  currentDeviceId_ = 129;
-}
-
-RtApi :: ~RtApi()
-{
-  MUTEX_DESTROY( &stream_.mutex );
-}
-
-RtAudioErrorType RtApi :: openStream( RtAudio::StreamParameters *oParams,
-                                      RtAudio::StreamParameters *iParams,
-                                      RtAudioFormat format, unsigned int sampleRate,
-                                      unsigned int *bufferFrames,
-                                      RtAudioCallback callback, void *userData,
-                                      RtAudio::StreamOptions *options )
-{
-  if ( stream_.state != STREAM_CLOSED ) {
-    errorText_ = "RtApi::openStream: a stream is already open!";
-    return error( RTAUDIO_INVALID_USE );
-  }
-
-  // Clear stream information potentially left from a previously open stream.
-  clearStreamInfo();
-
-  if ( oParams && oParams->nChannels < 1 ) {
-    errorText_ = "RtApi::openStream: a non-NULL output StreamParameters structure cannot have an nChannels value less than one.";
-    return error( RTAUDIO_INVALID_PARAMETER );
-  }
-
-  if ( iParams && iParams->nChannels < 1 ) {
-    errorText_ = "RtApi::openStream: a non-NULL input StreamParameters structure cannot have an nChannels value less than one.";
-    return error( RTAUDIO_INVALID_PARAMETER );
-  }
-
-  if ( oParams == NULL && iParams == NULL ) {
-    errorText_ = "RtApi::openStream: input and output StreamParameters structures are both NULL!";
-    return error( RTAUDIO_INVALID_PARAMETER );
-  }
-
-  if ( formatBytes(format) == 0 ) {
-    errorText_ = "RtApi::openStream: 'format' parameter value is undefined.";
-    return error( RTAUDIO_INVALID_PARAMETER );
-  }
-  
-  unsigned int m, oChannels = 0;
-  if ( oParams ) {
-    oChannels = oParams->nChannels;
-  }
-
-  unsigned int iChannels = 0;
-  if ( iParams ) {
-    iChannels = iParams->nChannels;
-  }
-
-  bool result = false;
-
-  if ( oChannels > 0 ) {
-
-    result = probeDeviceOpen( oParams->deviceId, OUTPUT, oChannels, oParams->firstChannel,
-                              sampleRate, format, bufferFrames, options );
-    if ( result == false )
-      return error( RTAUDIO_SYSTEM_ERROR );
-  }
-
-  if ( iChannels > 0 ) {
-
-    result = probeDeviceOpen( iParams->deviceId, INPUT, iChannels, iParams->firstChannel,
-                              sampleRate, format, bufferFrames, options );
-    if ( result == false )
-      return error( RTAUDIO_SYSTEM_ERROR );
-  }
-
-  stream_.callbackInfo.callback = (void *) callback;
-  stream_.callbackInfo.userData = userData;
-
-  if ( options ) options->numberOfBuffers = stream_.nBuffers;
-  stream_.state = STREAM_STOPPED;
-  return RTAUDIO_NO_ERROR;
-}
-
-std::vector<RtAudio::DeviceInfo> RtApi::getDeviceInfosNoProbe(void)
-{
-    listDevices();
-    return deviceList_;
-}
-
-RtAudio::DeviceInfo RtApi::getDeviceInfoByBusID(std::string busID)
-{    
-    for (unsigned int m = 0; m < deviceList_.size(); m++) {
-        if (deviceList_[m].partial.busID == busID) {
-            if (probeSingleDeviceInfo(deviceList_[m])==false) {
-                break;
-            }
-            return deviceList_[m];
-        }            
-    }
-
-    errorText_ = "RtApi::getDeviceInfo: probe error.";
-    error(RTAUDIO_INVALID_PARAMETER);
-    return RtAudio::DeviceInfo();
-}
-
-void RtApi :: closeStream( void )
-{
-  // MUST be implemented in subclasses!
-  return;
 }
 
 void RtApi::convertBuffer(const RtApi::RtApiStream stream_, char* outBuffer, char* inBuffer, RtApi::ConvertInfo info, unsigned int samples, RtApi::StreamMode mode)
@@ -910,44 +749,6 @@ void RtApi::convertBuffer(const RtApi::RtApiStream stream_, char* outBuffer, cha
     }
 }
 
-bool RtApi :: probeDeviceOpen( const std::string& /*deviceId*/, StreamMode /*mode*/, unsigned int /*channels*/,
-                               unsigned int /*firstChannel*/, unsigned int /*sampleRate*/,
-                               RtAudioFormat /*format*/, unsigned int * /*bufferSize*/,
-                               RtAudio::StreamOptions * /*options*/ )
-{
-  // MUST be implemented in subclasses!
-  return FAILURE;
-}
-
-void RtApi :: tickStreamTime( void )
-{
-  // Subclasses that do not provide their own implementation of
-  // getStreamTime should call this function once per buffer I/O to
-  // provide basic stream time support.
-
-  stream_.streamTime += ( stream_.bufferSize * 1.0 / stream_.sampleRate );
-
-  /*
-#if defined( HAVE_GETTIMEOFDAY )
-  gettimeofday( &stream_.lastTickTimestamp, NULL );
-#endif
-  */
-}
-
-RtAudioErrorType RtApi::registerExtraCallback(RtAudioDeviceCallback callback, void* userData)
-{
-    return RTAUDIO_UNKNOWN_ERROR;
-}
-
-RtAudioErrorType RtApi::unregisterExtraCallback()
-{
-    return RTAUDIO_UNKNOWN_ERROR;
-}
-
-RtAudioErrorType RtApi::openAsioControlPanel(void) {
-    return RTAUDIO_UNKNOWN_ERROR;
-}
-
 unsigned int RtApi::formatBytes(RtAudioFormat format) {
     if (format == RTAUDIO_SINT16)
         return 2;
@@ -960,17 +761,6 @@ unsigned int RtApi::formatBytes(RtAudioFormat format) {
     else if (format == RTAUDIO_SINT8)
         return 1;
     return 0;
-}
-
-long RtApi :: getStreamLatency( void )
-{
-  long totalLatency = 0;
-  if ( stream_.mode == OUTPUT || stream_.mode == DUPLEX )
-    totalLatency = stream_.latency[0];
-  if ( stream_.mode == INPUT || stream_.mode == DUPLEX )
-    totalLatency += stream_.latency[1];
-
-  return totalLatency;
 }
 
 RtApiStreamClass::RtApiStreamClass(RtApi::RtApiStream stream) : stream_(std::move(stream)) {
@@ -990,7 +780,7 @@ RtApiStreamClass::~RtApiStreamClass()
         free(stream_.deviceBuffer);
         stream_.deviceBuffer = 0;
     }
-    MUTEX_DESTROY( &stream_.mutex );
+    MUTEX_DESTROY(&stream_.mutex);
 }
 
 bool RtApiStreamClass::isStreamRunning() {
@@ -1003,296 +793,79 @@ unsigned int RtApiStreamClass::getBufferSize(void) const
     return stream_.bufferSize;
 }
 
-/*
-double RtApi :: getStreamTime( void )
+void RtApi::byteSwapBuffer(char* buffer, unsigned int samples, RtAudioFormat format)
 {
-#if defined( HAVE_GETTIMEOFDAY )
-  // Return a very accurate estimate of the stream time by
-  // adding in the elapsed time since the last tick.
-  struct timeval then;
-  struct timeval now;
+    char val;
+    char* ptr;
 
-  if ( stream_.state != STREAM_RUNNING || stream_.streamTime == 0.0 )
-    return stream_.streamTime;
+    ptr = buffer;
+    if (format == RTAUDIO_SINT16) {
+        for (unsigned int i = 0; i < samples; i++) {
+            // Swap 1st and 2nd bytes.
+            val = *(ptr);
+            *(ptr) = *(ptr + 1);
+            *(ptr + 1) = val;
 
-  gettimeofday( &now, NULL );
-  then = stream_.lastTickTimestamp;
-  return stream_.streamTime +
-    ((now.tv_sec + 0.000001 * now.tv_usec) -
-     (then.tv_sec + 0.000001 * then.tv_usec));     
-#else
-  return stream_.streamTime;
-  #endif
+            // Increment 2 bytes.
+            ptr += 2;
+        }
+    }
+    else if (format == RTAUDIO_SINT32 ||
+        format == RTAUDIO_FLOAT32) {
+        for (unsigned int i = 0; i < samples; i++) {
+            // Swap 1st and 4th bytes.
+            val = *(ptr);
+            *(ptr) = *(ptr + 3);
+            *(ptr + 3) = val;
+
+            // Swap 2nd and 3rd bytes.
+            ptr += 1;
+            val = *(ptr);
+            *(ptr) = *(ptr + 1);
+            *(ptr + 1) = val;
+
+            // Increment 3 more bytes.
+            ptr += 3;
+        }
+    }
+    else if (format == RTAUDIO_SINT24) {
+        for (unsigned int i = 0; i < samples; i++) {
+            // Swap 1st and 3rd bytes.
+            val = *(ptr);
+            *(ptr) = *(ptr + 2);
+            *(ptr + 2) = val;
+
+            // Increment 2 more bytes.
+            ptr += 2;
+        }
+    }
+    else if (format == RTAUDIO_FLOAT64) {
+        for (unsigned int i = 0; i < samples; i++) {
+            // Swap 1st and 8th bytes
+            val = *(ptr);
+            *(ptr) = *(ptr + 7);
+            *(ptr + 7) = val;
+
+            // Swap 2nd and 7th bytes
+            ptr += 1;
+            val = *(ptr);
+            *(ptr) = *(ptr + 5);
+            *(ptr + 5) = val;
+
+            // Swap 3rd and 6th bytes
+            ptr += 1;
+            val = *(ptr);
+            *(ptr) = *(ptr + 3);
+            *(ptr + 3) = val;
+
+            // Swap 4th and 5th bytes
+            ptr += 1;
+            val = *(ptr);
+            *(ptr) = *(ptr + 1);
+            *(ptr + 1) = val;
+
+            // Increment 5 more bytes.
+            ptr += 5;
+        }
+    }
 }
-*/
-
-void RtApi :: setStreamTime( double time )
-{
-  if ( time >= 0.0 )
-    stream_.streamTime = time;
-  /*
-#if defined( HAVE_GETTIMEOFDAY )
-  gettimeofday( &stream_.lastTickTimestamp, NULL );
-#endif
-  */
-}
-
-unsigned int RtApi :: getStreamSampleRate( void )
-{
-  if ( isStreamOpen() ) return stream_.sampleRate;
-  else return 0;
-}
-
-// *************************************************** //
-//
-// Protected common (OS-independent) RtAudio methods.
-//
-// *************************************************** //
-
-// This method can be modified to control the behavior of error
-// message printing.
-RtAudioErrorType RtApi :: error( RtAudioErrorType type )
-{
-  errorStream_.str(""); // clear the ostringstream to avoid repeated messages
-
-  // Don't output warnings if showWarnings_ is false
-  if ( type == RTAUDIO_WARNING && showWarnings_ == false ) return type;
-  
-  if ( errorCallback_ ) {
-    //const std::string errorMessage = errorText_;
-    //errorCallback_( type, errorMessage );
-    errorCallback_( type, errorText_ );
-  }
-  else
-    std::cerr << '\n' << errorText_ << "\n\n";
-  return type;
-}
-
-RtAudioErrorType RtApi::errorText(RtAudioErrorType type, const std::string& errorText)
-{
-    if ( type == RTAUDIO_WARNING && showWarnings_ == false ) return type;
-    if ( errorCallback_ ) {
-        errorCallback_( type, errorText );
-    }
-    else
-        std::cerr << '\n' << errorText_ << "\n\n";
-    return type;
-}
-
-/*
-void RtApi :: verifyStream()
-{
-  if ( stream_.state == STREAM_CLOSED ) {
-    errorText_ = "RtApi:: a stream is not open!";
-    error( RtAudioError::INVALID_USE );
-  }
-}
-*/
-
-void RtApi :: clearStreamInfo()
-{
-  stream_.mode = UNINITIALIZED;
-  stream_.state = STREAM_CLOSED;
-  stream_.sampleRate = 0;
-  stream_.bufferSize = 0;
-  stream_.nBuffers = 0;
-  stream_.userFormat = 0;
-  stream_.userInterleaved = true;
-  stream_.streamTime = 0.0;
-  stream_.apiHandle = 0;
-  stream_.deviceBuffer = 0;
-  stream_.callbackInfo.callback = 0;
-  stream_.callbackInfo.userData = 0;
-  stream_.callbackInfo.isRunning = false;
-  stream_.callbackInfo.deviceDisconnected = false;
-  for ( int i=0; i<2; i++ ) {
-    stream_.deviceId[i] = 11111;
-    stream_.doConvertBuffer[i] = false;
-    stream_.deviceInterleaved[i] = true;
-    stream_.doByteSwap[i] = false;
-    stream_.nUserChannels[i] = 0;
-    stream_.nDeviceChannels[i] = 0;
-    stream_.channelOffset[i] = 0;
-    stream_.deviceFormat[i] = 0;
-    stream_.latency[i] = 0;
-    stream_.userBuffer[i] = 0;
-    stream_.convertInfo[i].channels = 0;
-    stream_.convertInfo[i].inJump = 0;
-    stream_.convertInfo[i].outJump = 0;
-    stream_.convertInfo[i].inFormat = 0;
-    stream_.convertInfo[i].outFormat = 0;
-    stream_.convertInfo[i].inOffset.clear();
-    stream_.convertInfo[i].outOffset.clear();
-  }
-}
-
-void RtApi :: setConvertInfo( StreamMode mode, unsigned int firstChannel )
-{
-  if ( mode == INPUT ) { // convert device to user buffer
-    stream_.convertInfo[mode].inJump = stream_.nDeviceChannels[1];
-    stream_.convertInfo[mode].outJump = stream_.nUserChannels[1];
-    stream_.convertInfo[mode].inFormat = stream_.deviceFormat[1];
-    stream_.convertInfo[mode].outFormat = stream_.userFormat;
-  }
-  else { // convert user to device buffer
-    stream_.convertInfo[mode].inJump = stream_.nUserChannels[0];
-    stream_.convertInfo[mode].outJump = stream_.nDeviceChannels[0];
-    stream_.convertInfo[mode].inFormat = stream_.userFormat;
-    stream_.convertInfo[mode].outFormat = stream_.deviceFormat[0];
-  }
-
-  if ( stream_.convertInfo[mode].inJump < stream_.convertInfo[mode].outJump )
-    stream_.convertInfo[mode].channels = stream_.convertInfo[mode].inJump;
-  else
-    stream_.convertInfo[mode].channels = stream_.convertInfo[mode].outJump;
-
-  // Set up the interleave/deinterleave offsets.
-  if ( stream_.deviceInterleaved[mode] != stream_.userInterleaved ) {
-    if ( ( mode == OUTPUT && stream_.deviceInterleaved[mode] ) ||
-         ( mode == INPUT && stream_.userInterleaved ) ) {
-      for ( int k=0; k<stream_.convertInfo[mode].channels; k++ ) {
-        stream_.convertInfo[mode].inOffset.push_back( k * stream_.bufferSize );
-        stream_.convertInfo[mode].outOffset.push_back( k );
-        stream_.convertInfo[mode].inJump = 1;
-      }
-    }
-    else {
-      for ( int k=0; k<stream_.convertInfo[mode].channels; k++ ) {
-        stream_.convertInfo[mode].inOffset.push_back( k );
-        stream_.convertInfo[mode].outOffset.push_back( k * stream_.bufferSize );
-        stream_.convertInfo[mode].outJump = 1;
-      }
-    }
-  }
-  else { // no (de)interleaving
-    if ( stream_.userInterleaved ) {
-      for ( int k=0; k<stream_.convertInfo[mode].channels; k++ ) {
-        stream_.convertInfo[mode].inOffset.push_back( k );
-        stream_.convertInfo[mode].outOffset.push_back( k );
-      }
-    }
-    else {
-      for ( int k=0; k<stream_.convertInfo[mode].channels; k++ ) {
-        stream_.convertInfo[mode].inOffset.push_back( k * stream_.bufferSize );
-        stream_.convertInfo[mode].outOffset.push_back( k * stream_.bufferSize );
-        stream_.convertInfo[mode].inJump = 1;
-        stream_.convertInfo[mode].outJump = 1;
-      }
-    }
-  }
-
-  // Add channel offset.
-  if ( firstChannel > 0 ) {
-    if ( stream_.deviceInterleaved[mode] ) {
-      if ( mode == OUTPUT ) {
-        for ( int k=0; k<stream_.convertInfo[mode].channels; k++ )
-          stream_.convertInfo[mode].outOffset[k] += firstChannel;
-      }
-      else {
-        for ( int k=0; k<stream_.convertInfo[mode].channels; k++ )
-          stream_.convertInfo[mode].inOffset[k] += firstChannel;
-      }
-    }
-    else {
-      if ( mode == OUTPUT ) {
-        for ( int k=0; k<stream_.convertInfo[mode].channels; k++ )
-          stream_.convertInfo[mode].outOffset[k] += ( firstChannel * stream_.bufferSize );
-      }
-      else {
-        for ( int k=0; k<stream_.convertInfo[mode].channels; k++ )
-          stream_.convertInfo[mode].inOffset[k] += ( firstChannel  * stream_.bufferSize );
-      }
-    }
-  }
-}
-
-//static inline uint16_t bswap_16(uint16_t x) { return (x>>8) | (x<<8); }
-//static inline uint32_t bswap_32(uint32_t x) { return (bswap_16(x&0xffff)<<16) | (bswap_16(x>>16)); }
-//static inline uint64_t bswap_64(uint64_t x) { return (((unsigned long long)bswap_32(x&0xffffffffull))<<32) | (bswap_32(x>>32)); }
-
-void RtApi :: byteSwapBuffer( char *buffer, unsigned int samples, RtAudioFormat format )
-{
-  char val;
-  char *ptr;
-
-  ptr = buffer;
-  if ( format == RTAUDIO_SINT16 ) {
-    for ( unsigned int i=0; i<samples; i++ ) {
-      // Swap 1st and 2nd bytes.
-      val = *(ptr);
-      *(ptr) = *(ptr+1);
-      *(ptr+1) = val;
-
-      // Increment 2 bytes.
-      ptr += 2;
-    }
-  }
-  else if ( format == RTAUDIO_SINT32 ||
-            format == RTAUDIO_FLOAT32 ) {
-    for ( unsigned int i=0; i<samples; i++ ) {
-      // Swap 1st and 4th bytes.
-      val = *(ptr);
-      *(ptr) = *(ptr+3);
-      *(ptr+3) = val;
-
-      // Swap 2nd and 3rd bytes.
-      ptr += 1;
-      val = *(ptr);
-      *(ptr) = *(ptr+1);
-      *(ptr+1) = val;
-
-      // Increment 3 more bytes.
-      ptr += 3;
-    }
-  }
-  else if ( format == RTAUDIO_SINT24 ) {
-    for ( unsigned int i=0; i<samples; i++ ) {
-      // Swap 1st and 3rd bytes.
-      val = *(ptr);
-      *(ptr) = *(ptr+2);
-      *(ptr+2) = val;
-
-      // Increment 2 more bytes.
-      ptr += 2;
-    }
-  }
-  else if ( format == RTAUDIO_FLOAT64 ) {
-    for ( unsigned int i=0; i<samples; i++ ) {
-      // Swap 1st and 8th bytes
-      val = *(ptr);
-      *(ptr) = *(ptr+7);
-      *(ptr+7) = val;
-
-      // Swap 2nd and 7th bytes
-      ptr += 1;
-      val = *(ptr);
-      *(ptr) = *(ptr+5);
-      *(ptr+5) = val;
-
-      // Swap 3rd and 6th bytes
-      ptr += 1;
-      val = *(ptr);
-      *(ptr) = *(ptr+3);
-      *(ptr+3) = val;
-
-      // Swap 4th and 5th bytes
-      ptr += 1;
-      val = *(ptr);
-      *(ptr) = *(ptr+1);
-      *(ptr+1) = val;
-
-      // Increment 5 more bytes.
-      ptr += 5;
-    }
-  }
-}
-
-  // Indentation settings for Vim and Emacs
-  //
-  // Local Variables:
-  // c-basic-offset: 2
-  // indent-tabs-mode: nil
-  // End:
-  //
-  // vim: et sts=2 sw=2
-
