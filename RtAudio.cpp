@@ -66,8 +66,8 @@
 #endif
 
 // Static variable definitions.
-const unsigned int MAX_SAMPLE_RATES = 16;
-const unsigned int SAMPLE_RATES[] = {
+const unsigned int RtAudio::MAX_SAMPLE_RATES = 16;
+const unsigned int RtAudio::SAMPLE_RATES[] = {
   4000, 5512, 8000, 9600, 11025, 16000, 22050,
   32000, 44100, 48000, 64000, 88200, 96000, 128000, 176400, 192000
 };
@@ -86,7 +86,8 @@ const unsigned int SAMPLE_RATES[] = {
 
 #if defined(__WINDOWS_ASIO__)
 
-#include "asio/RtApiAsio.h"
+#include "asio/RtApiAsioEnumerator.h"
+#include "asio/RtApiAsioProber.h"
 
 #endif
 
@@ -273,7 +274,7 @@ std::shared_ptr<RtApiEnumerator> RtAudio::GetRtAudioEnumerator(RtAudio::Api api)
 #endif
 #if defined(__WINDOWS_ASIO__)
     if (api == WINDOWS_ASIO)
-        rtapi_ = new RtApiAsio();
+        return std::make_shared<RtApiAsioEnumerator>();
 #endif
 #if defined(__WINDOWS_WASAPI__)
     if (api == RtAudio::WINDOWS_WASAPI)
@@ -292,6 +293,10 @@ std::shared_ptr<RtApiEnumerator> RtAudio::GetRtAudioEnumerator(RtAudio::Api api)
 
 std::shared_ptr<RtApiProber> RtAudio::GetRtAudioProber(RtAudio::Api api)
 {
+#if defined(__WINDOWS_ASIO__)
+    if (api == WINDOWS_ASIO)
+        return std::make_shared<RtApiAsioProber>();
+#endif
 #if defined(__WINDOWS_WASAPI__)
     if (api == RtAudio::WINDOWS_WASAPI)
         return std::make_shared<RtApiWasapiProber>();

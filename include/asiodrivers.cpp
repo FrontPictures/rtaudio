@@ -99,9 +99,18 @@ AsioDrivers::~AsioDrivers()
 bool AsioDrivers::getCurrentDriverName(char *name)
 {
 	if(curIndex >= 0)
-		return asioGetDriverName(curIndex, name, 32) == 0 ? true : false;
+ 		return asioGetDriverName(curIndex, name, 64) == 0 ? true : false;
 	name[0] = 0;
 	return false;
+}
+
+bool AsioDrivers::getCurrentDriverCLSID(CLSID* clsid)
+{
+    if (curIndex >= 0 && clsid)
+        return asioGetDriverCLSID(curIndex, clsid) == 0 ? true : false;
+    if (clsid)
+        *clsid = {};
+    return false;
 }
 
 long AsioDrivers::getDriverNames(char **names, long maxDrivers)
@@ -139,6 +148,36 @@ bool AsioDrivers::loadDriver(char *name)
 		}
 	}
 	return false;
+}
+
+bool AsioDrivers::loadDriverByCLSID(CLSID clsid)
+{
+    CLSID dclsid{};
+    CLSID curclsid{};
+    bool hasCurrentDriver = false;
+
+    for (long i = 0; i < asioGetNumDev(); i++)
+    {
+        if (!asioGetDriverCLSID(i, &dclsid) && clsid == dclsid)
+        {
+            hasCurrentDriver = getCurrentDriverCLSID(&curclsid);
+            removeCurrentDriver();
+
+            if (!asioOpenDriver(i, (void**)&theAsioDriver))
+            {
+                curIndex = i;
+                return true;
+            }
+            else
+            {
+                theAsioDriver = 0;
+                if (hasCurrentDriver && curclsid != clsid)
+                    loadDriverByCLSID(curclsid);	// try restore
+            }
+            break;
+        }
+    }
+    return false;
 }
 
 void AsioDrivers::removeCurrentDriver()

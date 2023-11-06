@@ -286,6 +286,9 @@ class RtApiSystemCallback;
 class RTAUDIO_DLL_PUBLIC RtAudio
 {
 public:
+    static const unsigned int MAX_SAMPLE_RATES;
+    static const unsigned int SAMPLE_RATES[];
+
     //! Audio API specifier arguments.
     enum Api {
         UNSPECIFIED,    /*!< Search for a working compiled API. */

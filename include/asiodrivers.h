@@ -29,8 +29,10 @@ public:
 	~AsioDrivers();
 	
 	bool getCurrentDriverName(char *name);
+	bool getCurrentDriverCLSID(CLSID* clsid);
 	long getDriverNames(char **names, long maxDrivers);
 	bool loadDriver(char *name);
+	bool loadDriverByCLSID(CLSID clsid);
 	void removeCurrentDriver();
 	long getCurrentDriverIndex() {return curIndex;}
 protected:

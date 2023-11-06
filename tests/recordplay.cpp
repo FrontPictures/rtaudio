@@ -137,6 +137,10 @@ bool playback_audio(AudioParamsCapture params, std::atomic_bool* stop_flag) {
 }
 
 int main(int argc, char* argv[]) {
+    int ss = sizeof(unsigned long);
+    ss = sizeof(unsigned short);
+    auto res = atoi("0x11");
+    return res;
     CLIParams params({
         {"api", "name of audio API", false},
         {"device_in", "input device busID to use", false},
