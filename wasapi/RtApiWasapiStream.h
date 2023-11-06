@@ -10,7 +10,7 @@ public:
     RtApiWasapiStream(RtApi::RtApiStream stream, Microsoft::WRL::ComPtr<IAudioClient> audioClient, Microsoft::WRL::ComPtr<IAudioRenderClient> renderClient, Microsoft::WRL::ComPtr<IAudioCaptureClient> captureClient, UNIQUE_FORMAT deviceFormat, UNIQUE_EVENT streamEvent, AUDCLNT_SHAREMODE shareMode, RtApi::StreamMode mode);
 
     RtApiWasapiStream(const RtApiWasapiStream&) = delete;
-    ~RtApiWasapiStream() {}
+    ~RtApiWasapiStream();
     RtAudio::Api getCurrentApi(void) override { return RtAudio::WINDOWS_WASAPI; }
 
     RtAudioErrorType startStream(void) override;

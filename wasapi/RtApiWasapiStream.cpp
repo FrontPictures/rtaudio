@@ -31,6 +31,11 @@ RtApiWasapiStream::RtApiWasapiStream(RtApi::RtApiStream stream, Microsoft::WRL::
 {
 }
 
+RtApiWasapiStream::~RtApiWasapiStream()
+{
+    stopStream();
+}
+
 RtAudioErrorType RtApiWasapiStream::startStream(void)
 {
     MutexRaii<StreamMutex> lock(stream_.mutex);

@@ -145,6 +145,11 @@ namespace {
 std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(const std::string& busId, RtApi::StreamMode mode, unsigned int channels, unsigned int sampleRate, RtAudioFormat format, unsigned int bufferSize, RtAudioCallback callback,
     void* userData, RtAudio::StreamOptions* options)
 {
+    if (mode != RtApi::StreamMode::INPUT && mode != RtApi::StreamMode::OUTPUT) {
+        error(RTAUDIO_SYSTEM_ERROR, "RtApiWasapi::probeDeviceOpen: WASAPI does not support DUPLEX streams.");
+        return {};
+    }
+
     if (!deviceEnumerator_)
         return {};
 
@@ -156,7 +161,7 @@ std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(const s
     UNIQUE_EVENT streamEvent = MAKE_UNIQUE_EVENT_EMPTY;
     long long streamLatency = 0;
     AUDCLNT_SHAREMODE shareMode = AUDCLNT_SHAREMODE_SHARED;
-    
+
     std::wstring temp = std::wstring(busId.begin(), busId.end());
     HRESULT hr = deviceEnumerator_->GetDevice((LPWSTR)temp.c_str(), &devicePtr);
     if (FAILED(hr)) {
@@ -344,7 +349,7 @@ std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(const s
     if (options && options->flags & RTAUDIO_SCHEDULE_REALTIME)
         stream_.callbackInfo.priority = 15;
     else
-        stream_.callbackInfo.priority = 0;    
+        stream_.callbackInfo.priority = 0;
     return std::shared_ptr<RtApiWasapiStream>(
         new RtApiWasapiStream(std::move(stream_), audioClient, renderClient, captureClient, std::move(deviceFormat),
             std::move(streamEvent), shareMode, mode));

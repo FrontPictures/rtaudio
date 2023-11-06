@@ -8,8 +8,8 @@
 
 using namespace std;
 
-typedef int32_t MY_TYPE;
-#define FORMAT RTAUDIO_SINT32
+typedef float MY_TYPE;
+#define FORMAT RTAUDIO_FLOAT32
 
 void errorCallback(RtAudioErrorType /*type*/, const std::string& errorText)
 {
@@ -80,17 +80,11 @@ struct AudioParamsCapture {
 };
 
 bool capture_audio(AudioParamsCapture params) {
-    RtAudio adc(params.api);
-    adc.getDeviceInfosNoProbe();
-    RtAudio::DeviceInfo info = adc.getDeviceInfoByBusID(params.busID);
-    if (info.ID == 0) {
+    auto factory = RtAudio::GetRtAudioStreamFactory(params.api);
+    if (!factory) {
+        std::cerr << "\nNo factory\n\n";
         return false;
     }
-
-    RtAudio::StreamParameters iParams;
-    iParams.nChannels = params.channels;
-    iParams.firstChannel = 0;
-    iParams.deviceId = info.busID;
     RtAudio::StreamOptions options;
     options.flags |= RTAUDIO_SCHEDULE_REALTIME;
     if (params.hog) {
@@ -99,51 +93,46 @@ bool capture_audio(AudioParamsCapture params) {
 
     auto start_time = std::chrono::high_resolution_clock::now();
     for (int t = 0; t < params.retries; t++) {
-        if (adc.openStream(nullptr, &iParams, FORMAT, params.samplerate, &params.bufferFrames, &captureAudioCallback, params.userData, &options)) {
-            std::cout << adc.getErrorText() << std::endl;
+        auto stream = factory->createStream(params.busID, RtApi::StreamMode::INPUT, params.channels, params.samplerate, FORMAT, params.bufferFrames, &captureAudioCallback, params.userData, &options);
+        if (!stream) {
+            std::cout << "\nError opening stream\n";
             SLEEP(500);
             continue;
         }
-        adc.startStream();
-        std::cout << "\nRecording... (buffer size = " << params.bufferFrames << ").\n";
+        stream->startStream();
+        std::cout << "\nRecording... (buffer size = " << stream->getBufferSize() << ").\n";
         auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time).count();
-        while (adc.isStreamRunning() && elapsed_ms < params.durationMs) {
+        while (stream->isStreamRunning() && elapsed_ms < params.durationMs) {
             elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time).count();
             SLEEP(10);
         }
-        adc.closeStream();
         start_time = std::chrono::high_resolution_clock::now();
     }
     return true;
 }
 
 
-bool playback_audio(AudioParamsCapture params) {
-    RtAudio adc(params.api);
-    adc.getDeviceInfosNoProbe();
-    RtAudio::DeviceInfo info = adc.getDeviceInfoByBusID(params.busID);
-    if (info.ID == 0) {
+bool playback_audio(AudioParamsCapture params, std::atomic_bool* stop_flag) {
+    auto factory = RtAudio::GetRtAudioStreamFactory(params.api);
+    if (!factory) {
+        std::cerr << "\nNo factory\n\n";
         return false;
     }
-    RtAudio::StreamParameters oParams;
-    oParams.nChannels = params.channels;
-    oParams.firstChannel = 0;
-    oParams.deviceId = info.busID;
     RtAudio::StreamOptions options;
     options.flags |= RTAUDIO_SCHEDULE_REALTIME;
     if (params.hog) {
         options.flags |= RTAUDIO_HOG_DEVICE;
     }
-    if (adc.openStream(&oParams, nullptr, FORMAT, params.samplerate, &params.bufferFrames, &playbackAudioCallback, params.userData, &options)) {
-        std::cout << adc.getErrorText() << std::endl;
+    auto stream = factory->createStream(params.busID, RtApi::StreamMode::OUTPUT, params.channels, params.samplerate, FORMAT, params.bufferFrames, &playbackAudioCallback, params.userData, &options);
+    if (!stream) {
+        std::cout << "\nError opening output stream\n";
         return false;
     }
-    adc.startStream();
-    std::cout << "\nPlayback... (buffer size = " << params.bufferFrames << ").\n";
-    while (adc.isStreamRunning()) {
-        SLEEP(10);
+    stream->startStream();
+    std::cout << "\nPlayback... (buffer size = " << stream->getBufferSize() << ").\n";
+    while (stream->isStreamRunning() && *stop_flag == false) {
+        SLEEP(100);
     }
-    adc.closeStream();
     return true;
 }
 
@@ -172,28 +161,47 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     std::cout << "Using API: " << RtAudio::getApiDisplayName(api) << std::endl;
-    RtAudio dac(api, &errorCallback);
+    auto enumerator = RtAudio::GetRtAudioEnumerator(api);
+    auto prober = RtAudio::GetRtAudioProber(api);
+    if (!enumerator) {
+        std::cout << "\nNo enumerator found!\n";
+        return 1;
+    }
+    if (!prober) {
+        std::cout << "\nNo prober found!\n";
+        return 1;
+    }
 
-    std::vector<RtAudio::DeviceInfo> deviceInfos = dac.getDeviceInfosNoProbe();
-    deviceInfos = dac.getDeviceInfosNoProbe();
-    if (deviceInfos.empty()) {
+    auto devices = enumerator->listDevices();
+    if (devices.empty()) {
         std::cout << "\nNo audio devices found!\n";
         return 1;
     }
     std::cout << "Devices:" << std::endl;
-    RtAudio::DeviceInfo selectedDeviceIn{};
-    RtAudio::DeviceInfo selectedDeviceOut{};
-    for (auto& d : deviceInfos) {
+    std::optional<RtAudio::DeviceInfo> selectedDeviceIn{};
+    std::optional<RtAudio::DeviceInfo> selectedDeviceOut{};
+    for (auto& d : devices) {
         bool thisDeviceIn = d.name == params.getParamValue("device_in", argv, argc);
         bool thisDeviceOut = d.name == params.getParamValue("device_out", argv, argc);
         bool nod = false;
+
+        RtAudio::DeviceInfo info{};
+        if (thisDeviceIn || thisDeviceOut) {
+            auto dev_opt = prober->probeDevice(d.busID);
+            if (!dev_opt) {
+                std::cout << "\nFailed to probe device " << d.name << "!\n";
+                continue;
+            }
+            info = *dev_opt;
+        }
+
         if (thisDeviceIn) {
             std::cout << "->";
-            selectedDeviceIn = d;
+            selectedDeviceIn = info;
             nod = true;
         }
         if (thisDeviceOut) {
-            selectedDeviceOut = d;
+            selectedDeviceOut = info;
             std::cout << "<-";
             nod = true;
         }
@@ -203,26 +211,16 @@ int main(int argc, char* argv[]) {
         std::cout << d.name << std::endl;
     }
     std::cout << std::endl;
-    if (selectedDeviceIn.ID == 0 || selectedDeviceOut.ID == 0) {
+    if (!selectedDeviceIn || !selectedDeviceOut) {
         std::cout << "No device found" << std::endl;
         return 1;
     }
-    selectedDeviceIn = dac.getDeviceInfoByBusID(selectedDeviceIn.busID);
-    if (selectedDeviceIn.ID == 0) {
-        std::cout << "Failed to get input device info" << std::endl;
+    if (selectedDeviceOut->outputChannels == 0) {
+        std::cout << "This is no output channels" << std::endl;
         return 1;
     }
-    selectedDeviceOut = dac.getDeviceInfoByBusID(selectedDeviceOut.busID);
-    if (selectedDeviceOut.ID == 0) {
-        std::cout << "Failed to get input device info" << std::endl;
-        return 1;
-    }
-    if (selectedDeviceOut.outputChannels == 0) {
-        std::cout << "This is no output device" << std::endl;
-        return 1;
-    }
-    if (selectedDeviceIn.inputChannels == 0) {
-        std::cout << "This is no input device" << std::endl;
+    if (selectedDeviceIn->inputChannels == 0) {
+        std::cout << "This is no input channels" << std::endl;
         return 1;
     }
 
@@ -235,23 +233,23 @@ int main(int argc, char* argv[]) {
     bool hog = atoi(params.getParamValue("hog", argv, argc));
 
     if (channels == 0) {
-        channels = selectedDeviceIn.inputChannels;
+        channels = selectedDeviceIn->inputChannels;
     }
 
     if (fs == 0) {
-        fs = selectedDeviceIn.preferredSampleRate;
+        fs = selectedDeviceIn->preferredSampleRate;
     }
 
-    if (vector_contains(selectedDeviceIn.sampleRates, fs) == false ||
-        vector_contains(selectedDeviceOut.sampleRates, fs) == false) {
+    if (vector_contains(selectedDeviceIn->sampleRates, fs) == false ||
+        vector_contains(selectedDeviceOut->sampleRates, fs) == false) {
         std::cout << "Samplerate not supported" << std::endl;
         return 1;
     }
     cout << "Input device: " << endl << endl;
-    print_device(selectedDeviceIn);
+    print_device(*selectedDeviceIn);
 
     cout << endl << "Output device: " << endl << endl;;
-    print_device(selectedDeviceOut);
+    print_device(*selectedDeviceOut);
 
     UserData userData;
     userData.ringbuffer = RingBuffer<MY_TYPE>(ringbufferFill * 2);
@@ -260,7 +258,7 @@ int main(int argc, char* argv[]) {
 
     AudioParamsCapture paramsPass;
     paramsPass.api = api;
-    paramsPass.busID = selectedDeviceOut.busID;
+    paramsPass.busID = selectedDeviceOut->partial.busID;
     paramsPass.channels = channels;
     paramsPass.bufferFrames = bufferFrames;
     paramsPass.samplerate = fs;
@@ -270,12 +268,14 @@ int main(int argc, char* argv[]) {
     paramsPass.hog = hog;
     paramsPass.userData = &userData;
 
+    std::atomic_bool stop_flag = false;
 
-    std::thread play_async = std::thread(&playback_audio, paramsPass);
-
-    paramsPass.busID = selectedDeviceIn.busID;
+    std::thread play_async = std::thread(&playback_audio, paramsPass, &stop_flag);
+    paramsPass.busID = selectedDeviceIn->partial.busID;
     std::thread capture_async = std::thread(&capture_audio, paramsPass);
 
-    SLEEP(UINT16_MAX);
+    capture_async.join();
+    stop_flag = true;
+    play_async.join();
     return 0;
 }
