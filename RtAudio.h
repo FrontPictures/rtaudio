@@ -584,12 +584,12 @@ public:
     };
 
     struct RtApiStream {
-        std::string deviceId[2];  // Playback and record, respectively.
+        std::string deviceId;
         void* apiHandle;           // void pointer for API specific stream handle information
         StreamMode mode;           // OUTPUT, INPUT, or DUPLEX.
         StreamState state;         // STOPPED, RUNNING, or CLOSED
         char* userBuffer[2];       // Playback and record, respectively.
-        char* deviceBuffer;
+        char* deviceBuffer[2];     // Playback and record, respectively.
         bool doConvertBuffer[2];   // Playback and record, respectively.
         bool userInterleaved;
         bool deviceInterleaved[2]; // Playback and record, respectively.

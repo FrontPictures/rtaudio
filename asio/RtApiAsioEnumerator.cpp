@@ -28,6 +28,8 @@ RtApiAsioEnumerator::RtApiAsioEnumerator()
         RtAudio::DeviceInfoPartial info;
         info.name = tmp;
         info.busID = CLSIDToHex(driver_clsid);
+        info.supportsInput = true;
+        info.supportsOutput = true;
         mDevices.push_back(info);
     }
 }

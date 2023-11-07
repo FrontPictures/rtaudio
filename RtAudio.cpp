@@ -88,6 +88,7 @@ const unsigned int RtAudio::SAMPLE_RATES[] = {
 
 #include "asio/RtApiAsioEnumerator.h"
 #include "asio/RtApiAsioProber.h"
+#include "asio/RtApiAsioStreamFactory.h"
 
 #endif
 
@@ -306,6 +307,10 @@ std::shared_ptr<RtApiProber> RtAudio::GetRtAudioProber(RtAudio::Api api)
 
 std::shared_ptr<RtApiStreamClassFactory> RtAudio::GetRtAudioStreamFactory(RtAudio::Api api)
 {
+#if defined(__WINDOWS_ASIO__)
+    if (api == WINDOWS_ASIO)
+        return std::make_shared<RtApiAsioStreamFactory>();
+#endif
 #if defined(__WINDOWS_WASAPI__)
     if (api == RtAudio::WINDOWS_WASAPI)
         return std::make_shared<RtApiWasapiStreamFactory>();
@@ -354,8 +359,8 @@ void RtApi::convertBuffer(const RtApi::RtApiStream stream_, char* outBuffer, cha
         }
     }
     // Clear our RtApi::DUPLEX device RtApi::OUTPUT buffer if there are more device RtApi::OUTPUTs than user RtApi::OUTPUTs
-    if (outBuffer == stream_.deviceBuffer && stream_.mode == RtApi::DUPLEX && info.outJump > info.inJump)
-        memset(outBuffer, 0, samples * info.outJump * RtApi::formatBytes(info.outFormat));
+    //if (outBuffer == stream_.deviceBuffer && stream_.mode == RtApi::DUPLEX && info.outJump > info.inJump)
+      //  memset(outBuffer, 0, samples * info.outJump * RtApi::formatBytes(info.outFormat));
 
     int j;
     if (info.outFormat == RTAUDIO_FLOAT64) {
@@ -782,8 +787,10 @@ RtApiStreamClass::~RtApiStreamClass()
         }
     }
     if (stream_.deviceBuffer) {
-        free(stream_.deviceBuffer);
-        stream_.deviceBuffer = 0;
+        free(stream_.deviceBuffer[0]);
+        free(stream_.deviceBuffer[1]);
+        stream_.deviceBuffer[0] = 0;
+        stream_.deviceBuffer[1] = 0;
     }
     MUTEX_DESTROY(&stream_.mutex);
 }

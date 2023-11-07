@@ -208,41 +208,115 @@ std::shared_ptr<RtApiStreamClass> RtApiAsioStreamFactory::createStream(CreateStr
     stream_.deviceFormat[RtApi::OUTPUT] = 0;
     stream_.deviceFormat[RtApi::INPUT] = 0;
 
-    RtAudioFormat deviceFormat = 0;
-    bool doByteSwap = false;
+    {
+        RtAudioFormat deviceFormat = 0;
+        bool doByteSwap = false;
 
-    if (channelInfo.type == ASIOSTInt16MSB || channelInfo.type == ASIOSTInt16LSB) {
-        deviceFormat = RTAUDIO_SINT16;
-        if (channelInfo.type == ASIOSTInt16MSB) doByteSwap = true;
-    }
-    else if (channelInfo.type == ASIOSTInt32MSB || channelInfo.type == ASIOSTInt32LSB) {
-        deviceFormat = RTAUDIO_SINT32;
-        if (channelInfo.type == ASIOSTInt32MSB) doByteSwap = true;
-    }
-    else if (channelInfo.type == ASIOSTFloat32MSB || channelInfo.type == ASIOSTFloat32LSB) {
-        deviceFormat = RTAUDIO_FLOAT32;
-        if (channelInfo.type == ASIOSTFloat32MSB) doByteSwap = true;
-    }
-    else if (channelInfo.type == ASIOSTFloat64MSB || channelInfo.type == ASIOSTFloat64LSB) {
-        deviceFormat = RTAUDIO_FLOAT64;
-        if (channelInfo.type == ASIOSTFloat64MSB) doByteSwap = true;
-    }
-    else if (channelInfo.type == ASIOSTInt24MSB || channelInfo.type == ASIOSTInt24LSB) {
-        deviceFormat = RTAUDIO_SINT24;
-        if (channelInfo.type == ASIOSTInt24MSB) doByteSwap = true;
+        if (channelInfo.type == ASIOSTInt16MSB || channelInfo.type == ASIOSTInt16LSB) {
+            deviceFormat = RTAUDIO_SINT16;
+            if (channelInfo.type == ASIOSTInt16MSB) doByteSwap = true;
+        }
+        else if (channelInfo.type == ASIOSTInt32MSB || channelInfo.type == ASIOSTInt32LSB) {
+            deviceFormat = RTAUDIO_SINT32;
+            if (channelInfo.type == ASIOSTInt32MSB) doByteSwap = true;
+        }
+        else if (channelInfo.type == ASIOSTFloat32MSB || channelInfo.type == ASIOSTFloat32LSB) {
+            deviceFormat = RTAUDIO_FLOAT32;
+            if (channelInfo.type == ASIOSTFloat32MSB) doByteSwap = true;
+        }
+        else if (channelInfo.type == ASIOSTFloat64MSB || channelInfo.type == ASIOSTFloat64LSB) {
+            deviceFormat = RTAUDIO_FLOAT64;
+            if (channelInfo.type == ASIOSTFloat64MSB) doByteSwap = true;
+        }
+        else if (channelInfo.type == ASIOSTInt24MSB || channelInfo.type == ASIOSTInt24LSB) {
+            deviceFormat = RTAUDIO_SINT24;
+            if (channelInfo.type == ASIOSTInt24MSB) doByteSwap = true;
+        }
+
+        stream_.deviceFormat[RtApi::OUTPUT] = deviceFormat;
+        stream_.deviceFormat[RtApi::INPUT] = deviceFormat;
+
+        stream_.doByteSwap[RtApi::OUTPUT] = doByteSwap;
+        stream_.doByteSwap[RtApi::INPUT] = doByteSwap;
     }
 
-    stream_.deviceFormat[RtApi::OUTPUT] = deviceFormat;
-    stream_.deviceFormat[RtApi::INPUT] = deviceFormat;
+    stream_.bufferSize = params.bufferSize;
+    stream_.nBuffers = 2;
 
-    stream_.doByteSwap[RtApi::OUTPUT] = doByteSwap;
-    stream_.doByteSwap[RtApi::INPUT] = doByteSwap;
+    if (params.options && params.options->flags & RTAUDIO_NONINTERLEAVED) stream_.userInterleaved = false;
+    else stream_.userInterleaved = true;
+
+    // ASIO always uses non-interleaved buffers.
+    stream_.deviceInterleaved[RtApi::OUTPUT] = false;
+    stream_.deviceInterleaved[RtApi::INPUT] = false;
+
+    stream_.sampleRate = params.sampleRate;
+    stream_.deviceId = params.busId;
+    stream_.mode = params.mode;
+    stream_.state = RtApi::STREAM_STOPPED;
+
+
+    stream_.doConvertBuffer[RtApi::OUTPUT] = false;
+    stream_.doConvertBuffer[RtApi::INPUT] = false;
+    if (stream_.userFormat != stream_.deviceFormat[RtApi::OUTPUT])
+        stream_.doConvertBuffer[RtApi::OUTPUT] = true;
+    if (stream_.userFormat != stream_.deviceFormat[RtApi::INPUT])
+        stream_.doConvertBuffer[RtApi::INPUT] = true;
+    if (stream_.userInterleaved != stream_.deviceInterleaved[RtApi::OUTPUT] &&
+        stream_.nUserChannels[RtApi::OUTPUT] > 1)
+        stream_.doConvertBuffer[RtApi::OUTPUT] = true;
+    if (stream_.userInterleaved != stream_.deviceInterleaved[RtApi::INPUT] &&
+        stream_.nUserChannels[RtApi::INPUT] > 1)
+        stream_.doConvertBuffer[RtApi::INPUT] = true;
+
+    {
+        unsigned long bufferBytesOutput = stream_.nUserChannels[RtApi::OUTPUT] * params.bufferSize * RtApi::formatBytes(stream_.userFormat);
+        unsigned long bufferBytesInput = stream_.nUserChannels[RtApi::INPUT] * params.bufferSize * RtApi::formatBytes(stream_.userFormat);
+
+        if (bufferBytesOutput > 0) {
+            stream_.userBuffer[RtApi::OUTPUT] = (char*)calloc(bufferBytesOutput, 1);
+        }
+        if (bufferBytesInput > 0) {
+            stream_.userBuffer[RtApi::INPUT] = (char*)calloc(bufferBytesInput, 1);
+        }
+        if ((bufferBytesOutput > 0 && stream_.userBuffer[RtApi::OUTPUT] == NULL) || (bufferBytesInput > 0 && stream_.userBuffer[RtApi::INPUT] == NULL)) {
+            error(RTAUDIO_MEMORY_ERROR, "RtApiAsio::probeDeviceOpen: error allocating user buffer memory.");
+            free(stream_.userBuffer[RtApi::OUTPUT]);
+            free(stream_.userBuffer[RtApi::INPUT]);
+            return {};
+        }
+    }
+
+    {
+        unsigned long bufferBytesOutput = stream_.nDeviceChannels[RtApi::OUTPUT] * params.bufferSize * RtApi::formatBytes(stream_.deviceFormat[RtApi::OUTPUT]);
+        unsigned long bufferBytesInput = stream_.nDeviceChannels[RtApi::INPUT] * params.bufferSize * RtApi::formatBytes(stream_.deviceFormat[RtApi::INPUT]);
+        if (bufferBytesOutput > 0) {
+            stream_.deviceBuffer[RtApi::OUTPUT] = (char*)calloc(bufferBytesOutput, 1);
+        }
+        if (bufferBytesInput > 0) {
+            stream_.deviceBuffer[RtApi::INPUT] = (char*)calloc(bufferBytesInput, 1);
+        }
+        if ((bufferBytesOutput > 0 && stream_.deviceBuffer[RtApi::OUTPUT] == NULL) || (bufferBytesInput > 0 && stream_.deviceBuffer[RtApi::INPUT] == NULL)) {
+            error(RTAUDIO_MEMORY_ERROR, "RtApiAsio::probeDeviceOpen: error allocating user buffer memory.");
+            free(stream_.deviceBuffer[RtApi::OUTPUT]);
+            free(stream_.deviceBuffer[RtApi::INPUT]);
+            return {};
+        }
+    }
+
+
+    stream_.latency[RtApi::OUTPUT] = outputLatency;
+    stream_.latency[RtApi::INPUT] = inputLatency;
+
+
+
 
 
 
 
 
     //error
+    ASIODisposeBuffers();
     ASIOExit();
     drivers.removeCurrentDriver();
 
