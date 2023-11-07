@@ -632,12 +632,23 @@ protected:
     RtApi::RtApiStream stream_;
 };
 
+struct CreateStreamParams {
+    std::string busId;
+    RtApi::StreamMode mode = RtApi::StreamMode::UNINITIALIZED;
+    unsigned int channelsInput = 0;
+    unsigned int channelsOutput = 0;
+    unsigned int sampleRate = 0;
+    RtAudioFormat format = 0;
+    unsigned int bufferSize = 0;
+    RtAudioCallback callback = nullptr;
+    void* userData = nullptr;
+    RtAudio::StreamOptions* options = nullptr;
+};
 class RTAUDIO_DLL_PUBLIC RtApiStreamClassFactory : public ErrorBase {
 public:
     RtApiStreamClassFactory() {}
     virtual ~RtApiStreamClassFactory() {}
     virtual RtAudio::Api getCurrentApi(void) = 0;
-    virtual std::shared_ptr<RtApiStreamClass> createStream(const std::string& busId, RtApi::StreamMode mode, unsigned int channels, unsigned int sampleRate, RtAudioFormat format, unsigned int bufferSize, RtAudioCallback callback,
-        void* userData, RtAudio::StreamOptions* options) = 0;
+    virtual std::shared_ptr<RtApiStreamClass> createStream(CreateStreamParams params) = 0;
 };
 #endif

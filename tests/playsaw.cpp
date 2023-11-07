@@ -224,7 +224,19 @@ int main(int argc, char* argv[])
     }
 
     for (int iter = 0; iter < retries;) {
-        auto stream = factory->createStream(info->partial.busID, RtApi::OUTPUT, channels, fs, format, bufferFrames, produceAudio, &userData, &options);
+        CreateStreamParams params{};
+        params.busId = info->partial.busID;
+        params.mode = RtApi::OUTPUT;
+        params.channelsInput = 0;
+        params.channelsOutput = channels;
+        params.sampleRate = fs;
+        params.format = format;
+        params.bufferSize = bufferFrames;
+        params.callback = produceAudio;
+        params.userData = &userData;
+        params.options = &options;
+
+        auto stream = factory->createStream(params);
         if (!stream) {
             std::cout << "\nFailed to create stream!\n";
             continue;

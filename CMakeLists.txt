@@ -170,7 +170,7 @@ if (RTAUDIO_API_ASIO)
     include/iasiothiscallresolver.cpp)
   list(APPEND API_DEFS "-D__WINDOWS_ASIO__")
   list(APPEND API_LIST "asio")
-  list(APPEND rtaudio_SOURCES "asio/RtApiAsioEnumerator.cpp" "asio/RtApiAsioEnumerator.h" "asio/AsioCommon.h" "asio/AsioCommon.cpp" "asio/RtApiAsioProber.cpp" "asio/RtApiAsioProber.h")
+  list(APPEND rtaudio_SOURCES "asio/RtApiAsioEnumerator.cpp" "asio/RtApiAsioEnumerator.h" "asio/AsioCommon.h" "asio/AsioCommon.cpp" "asio/RtApiAsioProber.cpp" "asio/RtApiAsioProber.h" "asio/RtApiAsioStreamFactory.h" "asio/RtApiAsioStreamFactory.cpp")
 endif()
 
 # WASAPI

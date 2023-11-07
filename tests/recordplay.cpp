@@ -93,7 +93,19 @@ bool capture_audio(AudioParamsCapture params) {
 
     auto start_time = std::chrono::high_resolution_clock::now();
     for (int t = 0; t < params.retries; t++) {
-        auto stream = factory->createStream(params.busID, RtApi::StreamMode::INPUT, params.channels, params.samplerate, FORMAT, params.bufferFrames, &captureAudioCallback, params.userData, &options);
+        CreateStreamParams streamParams;
+        streamParams.busId = params.busID;
+        streamParams.mode = RtApi::OUTPUT;
+        streamParams.channelsInput = params.channels;
+        streamParams.channelsOutput = 0;
+        streamParams.sampleRate = params.samplerate;
+        streamParams.format = FORMAT;
+        streamParams.bufferSize = params.bufferFrames;
+        streamParams.callback = captureAudioCallback;
+        streamParams.userData = &params.userData;
+        streamParams.options = &options;
+
+        auto stream = factory->createStream(streamParams);
         if (!stream) {
             std::cout << "\nError opening stream\n";
             SLEEP(500);
@@ -123,7 +135,19 @@ bool playback_audio(AudioParamsCapture params, std::atomic_bool* stop_flag) {
     if (params.hog) {
         options.flags |= RTAUDIO_HOG_DEVICE;
     }
-    auto stream = factory->createStream(params.busID, RtApi::StreamMode::OUTPUT, params.channels, params.samplerate, FORMAT, params.bufferFrames, &playbackAudioCallback, params.userData, &options);
+    CreateStreamParams streamParams;
+    streamParams.busId = params.busID;
+    streamParams.mode = RtApi::INPUT;
+    streamParams.channelsInput = 0;
+    streamParams.channelsOutput = params.channels;
+    streamParams.sampleRate = params.samplerate;
+    streamParams.format = FORMAT;
+    streamParams.bufferSize = params.bufferFrames;
+    streamParams.callback = playbackAudioCallback;
+    streamParams.userData = &params.userData;
+    streamParams.options = &options;
+
+    auto stream = factory->createStream(streamParams);
     if (!stream) {
         std::cout << "\nError opening output stream\n";
         return false;

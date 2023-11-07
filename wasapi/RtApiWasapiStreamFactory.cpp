@@ -142,10 +142,9 @@ namespace {
     }
 }
 
-std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(const std::string& busId, RtApi::StreamMode mode, unsigned int channels, unsigned int sampleRate, RtAudioFormat format, unsigned int bufferSize, RtAudioCallback callback,
-    void* userData, RtAudio::StreamOptions* options)
+std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(CreateStreamParams params)
 {
-    if (mode != RtApi::StreamMode::INPUT && mode != RtApi::StreamMode::OUTPUT) {
+    if (params.mode != RtApi::StreamMode::INPUT && params.mode != RtApi::StreamMode::OUTPUT) {
         error(RTAUDIO_SYSTEM_ERROR, "RtApiWasapi::probeDeviceOpen: WASAPI does not support DUPLEX streams.");
         return {};
     }
@@ -162,7 +161,7 @@ std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(const s
     long long streamLatency = 0;
     AUDCLNT_SHAREMODE shareMode = AUDCLNT_SHAREMODE_SHARED;
 
-    std::wstring temp = std::wstring(busId.begin(), busId.end());
+    std::wstring temp = std::wstring(params.busId.begin(), params.busId.end());
     HRESULT hr = deviceEnumerator_->GetDevice((LPWSTR)temp.c_str(), &devicePtr);
     if (FAILED(hr)) {
         error(RTAUDIO_SYSTEM_ERROR, "RtApiWasapi::probeDeviceOpen: Unable to retrieve device handle.");
@@ -181,8 +180,8 @@ std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(const s
         return {};
     }
     audioClient->GetStreamLatency(&streamLatency);
-    REFERENCE_TIME userBufferSize = (((uint64_t)(bufferSize)) * 10000000 / deviceFormat->nSamplesPerSec);
-    if (options && options->flags & RTAUDIO_HOG_DEVICE) {
+    REFERENCE_TIME userBufferSize = (((uint64_t)(params.bufferSize)) * 10000000 / deviceFormat->nSamplesPerSec);
+    if (params.options && params.options->flags & RTAUDIO_HOG_DEVICE) {
         REFERENCE_TIME defaultBufferDuration = 0;
         REFERENCE_TIME minimumBufferDuration = 0;
 
@@ -196,7 +195,7 @@ std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(const s
             error(RTAUDIO_SYSTEM_ERROR, "RtApiWasapi::probeDeviceOpen: Unable to negotiate format for exclusive device.");
             return {};
         }
-        if (sampleRate != deviceFormat->nSamplesPerSec) {
+        if (params.sampleRate != deviceFormat->nSamplesPerSec) {
             error(RTAUDIO_SYSTEM_ERROR, "RtApiWasapi::probeDeviceOpen: samplerate exclusive mismatch.");
             return {};
         }
@@ -255,8 +254,8 @@ std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(const s
         error(RTAUDIO_SYSTEM_ERROR, "RtApiWasapi::probeDeviceOpen: Unable to get buffer size.");
         return {};
     }
-    bufferSize = nFrames;
-    if (mode == RtApi::StreamMode::OUTPUT) {
+    params.bufferSize = nFrames;
+    if (params.mode == RtApi::StreamMode::OUTPUT) {
         hr = audioClient->GetService(__uuidof(IAudioRenderClient),
             (void**)&renderClient);
         if (FAILED(hr)) {
@@ -303,54 +302,55 @@ std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(const s
     }
 
     RtApi::RtApiStream stream_{};
-    stream_.mode = mode;
-    stream_.deviceId[mode] = busId;
-    stream_.doByteSwap[mode] = false;
-    stream_.sampleRate = sampleRate;
-    stream_.bufferSize = bufferSize;
+    stream_.mode = params.mode;
+    stream_.deviceId[params.mode] = params.busId;
+    stream_.doByteSwap[params.mode] = false;
+    stream_.sampleRate = params.sampleRate;
+    stream_.bufferSize = params.bufferSize;
     stream_.nBuffers = 1;
-    stream_.nUserChannels[mode] = channels;
-    stream_.channelOffset[mode] = 0;
-    stream_.userFormat = format;
-    stream_.deviceFormat[mode] = GetRtAudioTypeFromWasapi(deviceFormat.get());
-    stream_.callbackInfo.callback = callback;
-    stream_.callbackInfo.userData = userData;
-    if (stream_.deviceFormat[mode] == 0) {
+    stream_.nUserChannels[RtApi::INPUT] = params.channelsInput;
+    stream_.nUserChannels[RtApi::OUTPUT] = params.channelsOutput;
+    stream_.channelOffset[params.mode] = 0;
+    stream_.userFormat = params.format;
+    stream_.deviceFormat[params.mode] = GetRtAudioTypeFromWasapi(deviceFormat.get());
+    stream_.callbackInfo.callback = params.callback;
+    stream_.callbackInfo.userData = params.userData;
+    if (stream_.deviceFormat[params.mode] == 0) {
         error(RTAUDIO_SYSTEM_ERROR, "RtApiWasapiStreamFactory: wasapi format not implemented");
         return {};
     }
-    stream_.nDeviceChannels[mode] = deviceFormat->nChannels;
-    if (options && options->flags & RTAUDIO_NONINTERLEAVED)
+    stream_.nDeviceChannels[params.mode] = deviceFormat->nChannels;
+    if (params.options && params.options->flags & RTAUDIO_NONINTERLEAVED)
         stream_.userInterleaved = false;
     else
         stream_.userInterleaved = true;
-    stream_.deviceInterleaved[mode] = true;
-    stream_.doConvertBuffer[mode] = false;
-    if (stream_.userFormat != stream_.deviceFormat[mode] ||
+    stream_.deviceInterleaved[params.mode] = true;
+    stream_.doConvertBuffer[params.mode] = false;
+    if (stream_.userFormat != stream_.deviceFormat[params.mode] ||
         stream_.nUserChannels[0] != stream_.nDeviceChannels[0] ||
         stream_.nUserChannels[1] != stream_.nDeviceChannels[1])
-        stream_.doConvertBuffer[mode] = true;
-    else if (stream_.userInterleaved != stream_.deviceInterleaved[mode] &&
-        stream_.nUserChannels[mode] > 1)
-        stream_.doConvertBuffer[mode] = true;
+        stream_.doConvertBuffer[params.mode] = true;
+    else if (stream_.userInterleaved != stream_.deviceInterleaved[params.mode] &&
+        stream_.nUserChannels[params.mode] > 1)
+        stream_.doConvertBuffer[params.mode] = true;
 
-    if (stream_.doConvertBuffer[mode])
-        setConvertInfo(mode, stream_);
+    if (stream_.doConvertBuffer[params.mode])
+        setConvertInfo(params.mode, stream_);
 
-    unsigned int bufferBytes = stream_.nUserChannels[mode] * stream_.bufferSize * RtApi::formatBytes(stream_.userFormat);
-    if (stream_.doConvertBuffer[mode]) {
-        stream_.userBuffer[mode] = (char*)calloc(bufferBytes, 1);
-        if (!stream_.userBuffer[mode]) {
+    unsigned int bufferBytes = stream_.nUserChannels[params.mode] * stream_.bufferSize * RtApi::formatBytes(stream_.userFormat);
+    if (stream_.doConvertBuffer[params.mode]) {
+        stream_.userBuffer[params.mode] = (char*)calloc(bufferBytes, 1);
+        if (!stream_.userBuffer[params.mode]) {
             error(RTAUDIO_MEMORY_ERROR, "RtApiWasapi::probeDeviceOpen: Error allocating user buffer memory.");
             return {};
         }
     }
 
-    if (options && options->flags & RTAUDIO_SCHEDULE_REALTIME)
+    if (params.options && params.options->flags & RTAUDIO_SCHEDULE_REALTIME)
         stream_.callbackInfo.priority = 15;
     else
         stream_.callbackInfo.priority = 0;
     return std::shared_ptr<RtApiWasapiStream>(
         new RtApiWasapiStream(std::move(stream_), audioClient, renderClient, captureClient, std::move(deviceFormat),
-            std::move(streamEvent), shareMode, mode));
+            std::move(streamEvent), shareMode, params.mode));
 }
