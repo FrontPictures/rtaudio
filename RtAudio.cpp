@@ -787,8 +787,8 @@ RtApiStreamClass::~RtApiStreamClass()
         }
     }
     if (stream_.deviceBuffer) {
-        free(stream_.deviceBuffer[0]);
-        free(stream_.deviceBuffer[1]);
+        free(stream_.deviceBuffer);
+        free(stream_.deviceBuffer);
         stream_.deviceBuffer[0] = 0;
         stream_.deviceBuffer[1] = 0;
     }
