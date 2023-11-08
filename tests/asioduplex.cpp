@@ -10,11 +10,6 @@ using namespace std;
 typedef int32_t MY_TYPE;
 #define FORMAT RTAUDIO_SINT32
 
-void errorCallback(RtAudioErrorType /*type*/, const std::string& errorText)
-{
-    std::cerr << "\nerrorCallback: " << errorText << "\n\n";
-}
-
 void usage(const CLIParams& params) {
     std::cout << "\nuseage: asioduplex " << params.getShortString() << "\n";
     std::cout << params.getFullString();
@@ -25,7 +20,7 @@ struct UserData {
 };
 
 int audioCallback(void* outputBuffer, void* inputBuffer, unsigned int nBufferFrames,
-                  double streamTime, RtAudioStreamStatus status, void* data) {
+    double streamTime, RtAudioStreamStatus status, void* data) {
     UserData* userData = static_cast<UserData*>(data);
     if (!inputBuffer || !outputBuffer)
         return 0;
@@ -45,7 +40,7 @@ int main(int argc, char* argv[]) {
                          {"buffer", "buffer frames", true, "1024"},
                          {"time", "time duration in milliseconds", true, "1000"},
                          {"tries", "retry count", true, "1"}
-                     });
+        });
 
     if (params.checkCountArgc(argc) == false) {
         usage(params);
@@ -54,24 +49,29 @@ int main(int argc, char* argv[]) {
 
     RtAudio::Api api = RtAudio::getCompiledApiByName(params.getParamValue("system", argv, argc));
 
-    if (api == RtAudio::Api::UNSPECIFIED){
-        cout<<"API not found"<<endl;
+    if (api == RtAudio::Api::UNSPECIFIED) {
+        cout << "API not found" << endl;
         return 1;
     }
-    if (api != RtAudio::Api::WINDOWS_ASIO && api != RtAudio::Api::LINUX_ALSA && api != RtAudio::Api::MACOSX_CORE){
-        cout<<"ASIO, CORE or ALSA needed"<<endl;
+    if (api != RtAudio::Api::WINDOWS_ASIO && api != RtAudio::Api::LINUX_ALSA && api != RtAudio::Api::MACOSX_CORE) {
+        cout << "ASIO, CORE or ALSA needed" << endl;
         return 1;
     }
-    RtAudio dac(api, &errorCallback);
-    std::vector<RtAudio::DeviceInfo> deviceInfos = dac.getDeviceInfosNoProbe();
-    deviceInfos = dac.getDeviceInfosNoProbe();
-    if (deviceInfos.empty()) {
+    auto enumerator = RtAudio::GetRtAudioEnumerator(api);
+    if (!enumerator) {
+        std::cout << "\nNo enumerator!\n";
+        return 1;
+    }
+    auto devices = enumerator->listDevices();
+    if (devices.empty()) {
         std::cout << "\nNo audio devices found!\n";
         return 1;
     }
+
     std::cout << "Devices:" << std::endl;
-    RtAudio::DeviceInfo selectedDevice{};
-    for (auto& d : deviceInfos) {
+    std::optional<RtAudio::DeviceInfoPartial> selectedDevice;
+
+    for (auto& d : devices) {
         if (d.name == params.getParamValue("device", argv, argc)) {
             std::cout << "*";
             selectedDevice = d;
@@ -83,20 +83,25 @@ int main(int argc, char* argv[]) {
     }
     std::cout << std::endl;
 
-    if (selectedDevice.ID == 0) {
+    if (!selectedDevice) {
         std::cout << "No device found" << std::endl;
         return 1;
     }
-    selectedDevice = dac.getDeviceInfoByBusID(selectedDevice.busID);
-    if (selectedDevice.ID == 0) {
+    auto prober = RtAudio::GetRtAudioProber(api);
+    if (!prober) {
+        std::cout << "\nNo prober!\n";
+        return 1;
+    }
+    auto info = prober->probeDevice(selectedDevice->busID);
+    if (!info) {
         std::cout << "Failed to get input device info" << std::endl;
         return 1;
     }
-    if (selectedDevice.outputChannels == 0) {
+    if (info->outputChannels == 0) {
         std::cout << "This is no output channels" << std::endl;
         return 1;
     }
-    if (selectedDevice.inputChannels == 0) {
+    if (info->inputChannels == 0) {
         std::cout << "This is no input channels" << std::endl;
         return 1;
     }
@@ -108,54 +113,59 @@ int main(int argc, char* argv[]) {
     unsigned int bufferFrames = atoi(params.getParamValue("buffer", argv, argc));
 
     if (channels == 0) {
-        channels = selectedDevice.inputChannels;
+        channels = info->inputChannels;
     }
 
     if (fs == 0) {
-        fs = selectedDevice.preferredSampleRate;
+        fs = info->preferredSampleRate;
     }
 
-    if (vector_contains(selectedDevice.sampleRates, fs) == false) {
+    if (vector_contains(info->sampleRates, fs) == false) {
         std::cout << "Samplerate not supported" << std::endl;
         return 1;
     }
 
     cout << endl;
-    print_device(selectedDevice);
+    print_device(*info);
 
-    RtAudio::StreamParameters oParams;
-    oParams.nChannels = channels;
-    oParams.firstChannel = 0;
-    oParams.deviceId = selectedDevice.busID;
-
-    RtAudio::StreamParameters iParams;
-    iParams.nChannels = channels;
-    iParams.firstChannel = 0;
-    iParams.deviceId = selectedDevice.busID;
+    auto factory = RtAudio::GetRtAudioStreamFactory(api);
+    if (!factory) {
+        std::cout << "No factory" << std::endl;
+        return 1;
+    }
 
     UserData userData;
     userData.channels = channels;
 
     auto start_time = std::chrono::high_resolution_clock::now();
     for (int t = 0; t < retries; t++) {
-        if (dac.openStream(&oParams, &iParams, FORMAT, fs, &bufferFrames, &audioCallback, &userData, nullptr)) {
-            std::cout << dac.getErrorText() << std::endl;
-            SLEEP(500);
+        CreateStreamParams params{};
+        params.busId = info->partial.busID;
+        params.mode = RtApi::DUPLEX;
+        params.channelsInput = channels;
+        params.channelsOutput = channels;
+        params.sampleRate = fs;
+        params.format = FORMAT;
+        params.bufferSize = bufferFrames;
+        params.callback = audioCallback;
+        params.userData = &userData;
+        params.options = nullptr;
+
+        auto stream = factory->createStream(params);
+        if (!stream) {
+            std::cout << "\nFailed to create stream!\n";
+            SLEEP(1000);
             continue;
         }
-        dac.startStream();
+        stream->startStream();
         std::cout << "Playback... (buffer size = " << bufferFrames << ")" << endl;
         auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time).count();
-        while (dac.isStreamRunning() && elapsed_ms < durationMs) {
+        while (stream->isStreamRunning() && elapsed_ms < durationMs) {
             elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time).count();
             SLEEP(10);
         }
-
-        dac.closeStream();
+        stream->stopStream();
         start_time = std::chrono::high_resolution_clock::now();
     }
-
-    SLEEP(UINT16_MAX);
-
     return 0;
 }

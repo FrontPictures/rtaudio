@@ -236,22 +236,26 @@ int main(int argc, char* argv[])
         params.userData = &userData;
         params.options = &options;
 
-        auto stream = factory->createStream(params);
-        if (!stream) {
-            std::cout << "\nFailed to create stream!\n";
-            continue;
-        }
-        stream->startStream();
-        auto start_time = std::chrono::high_resolution_clock::now();
+        {
+            auto stream = factory->createStream(params);
+            if (!stream) {
+                std::cout << "\nFailed to create stream!\n";
+                SLEEP(0);
+                continue;
+            }
+            std::cout << "\nStream created!\n";
+            stream->startStream();
+            auto start_time = std::chrono::high_resolution_clock::now();
 
-        auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time).count();
-        while (stream->isStreamRunning() && elapsed_ms < durationMs) {
-            elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time).count();
-            SLEEP(100);
+            auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time).count();
+            while (stream->isStreamRunning() && elapsed_ms < durationMs) {
+                elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time).count();
+                SLEEP(100);
+            }
+            stream->stopStream();
+            iter++;
         }
-        stream->stopStream();
-        iter++;
-        SLEEP(100);
+        SLEEP(0);
     }
     std::cout << "Finished" << std::endl;
     return 0;

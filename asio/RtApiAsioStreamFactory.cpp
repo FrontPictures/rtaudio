@@ -1,6 +1,9 @@
 #include "RtApiAsioStreamFactory.h"
+#include "RtApiAsioStream.h"
 
 namespace {
+    ASIOCallbacks asioCallbacks;
+
     unsigned int calculateBufferSize(unsigned int bufferSize, long preferSize, long minSize, long maxSize, long granularity)
     {
         if (bufferSize == 0) bufferSize = preferSize;
@@ -36,21 +39,6 @@ namespace {
             bufferSize = (bufferSize + granularity - 1) / granularity * granularity;
         }
         return bufferSize;
-    }
-
-    static void bufferSwitch(long index, ASIOBool /*processNow*/)
-    {
-
-    }
-
-    static void sampleRateChangedGlobal(ASIOSampleRate sRate)
-    {
-
-    }
-
-    static long asioMessagesGlobal(long selector, long value, void* /*message*/, double* /*opt*/)
-    {
-        return 0;
     }
 
     bool setupFormat(const ASIOChannelInfo channelInfo, RtApi::RtApiStream& stream_)
@@ -101,6 +89,8 @@ namespace {
         stream_.bufferSize = params.bufferSize;
         stream_.nUserChannels[RtApi::OUTPUT] = params.channelsOutput;
         stream_.nUserChannels[RtApi::INPUT] = params.channelsInput;
+        stream_.callbackInfo.callback = params.callback;
+        stream_.callbackInfo.userData = params.userData;
     }
 
     void setupStreamCommon(RtApi::RtApiStream& stream_)
@@ -131,6 +121,7 @@ namespace {
         if (stream_.userBuffer[mode] == nullptr) {
             return false;
         }
+        return true;
     }
 
     bool allocateDeviceBuffer(RtApi::RtApiStream& stream_) {
@@ -191,6 +182,24 @@ std::shared_ptr<RtApiStreamClass> RtApiAsioStreamFactory::createStream(CreateStr
         return {};
     }
 
+    RtApi::RtApiStream stream_{};
+    auto stream = createAsioStream(driverName, params, stream_);
+    apiAsioStream = stream.get();
+    if (stream)
+        return stream;
+    free(stream_.userBuffer[RtApi::OUTPUT]);
+    free(stream_.userBuffer[RtApi::INPUT]);
+    free(stream_.deviceBuffer);
+    apiAsioStream = nullptr;
+    ASIODisposeBuffers();
+    ASIOExit();
+    drivers.removeCurrentDriver();
+    return {};
+}
+
+std::shared_ptr<RtApiAsioStream> RtApiAsioStreamFactory::createAsioStream(const char* driverName, CreateStreamParams params, RtApi::RtApiStream& stream_)
+{
+    ASIOError result = 0;
     long minSize = 0, maxSize = 0, preferSize = 0, granularity = 0;
     long inputChannels = 0, outputChannels = 0;
     long inputLatency = 0, outputLatency = 0;
@@ -269,9 +278,8 @@ std::shared_ptr<RtApiStreamClass> RtApiAsioStreamFactory::createStream(CreateStr
         infos[i + outputChannels].channelNum = i;
     }
 
-    ASIOCallbacks asioCallbacks{};
-    asioCallbacks.bufferSwitch = &bufferSwitch;
-    asioCallbacks.sampleRateDidChange = &sampleRateChangedGlobal;
+    asioCallbacks.bufferSwitch = &asioBufferSwitch;
+    asioCallbacks.sampleRateDidChange = &asioSampleRateChangedGlobal;
     asioCallbacks.asioMessage = &asioMessagesGlobal;
     asioCallbacks.bufferSwitchTimeInfo = NULL;
 
@@ -294,7 +302,6 @@ std::shared_ptr<RtApiStreamClass> RtApiAsioStreamFactory::createStream(CreateStr
         error(RTAUDIO_WARNING, errorStream_.str()); // warn but don't fail
     }
 
-    RtApi::RtApiStream stream_{};
     stream_.nDeviceChannels[RtApi::OUTPUT] = outputChannels;
     stream_.nDeviceChannels[RtApi::INPUT] = inputChannels;
     // ASIO always uses non-interleaved buffers.
@@ -323,18 +330,7 @@ std::shared_ptr<RtApiStreamClass> RtApiAsioStreamFactory::createStream(CreateStr
         error(RTAUDIO_MEMORY_ERROR, "RtApiAsio::probeDeviceOpen: error allocating user buffer memory.");
         return {};
     }
-
-
-
-
-
-
-    //error
-    free(stream_.userBuffer[RtApi::OUTPUT]);
-    free(stream_.userBuffer[RtApi::INPUT]);
-    ASIODisposeBuffers();
-    ASIOExit();
-    drivers.removeCurrentDriver();
-
-    return std::shared_ptr<RtApiStreamClass>();
+    RtApi::setConvertInfo(RtApi::OUTPUT, stream_);
+    RtApi::setConvertInfo(RtApi::INPUT, stream_);
+    return std::make_shared<RtApiAsioStream>(std::move(stream_), std::move(infos));
 }

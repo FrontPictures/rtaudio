@@ -612,6 +612,7 @@ public:
     static unsigned int formatBytes(RtAudioFormat format);
     static void convertBuffer(const RtApi::RtApiStream stream_, char* outBuffer, char* inBuffer, RtApi::ConvertInfo info, unsigned int samples, RtApi::StreamMode mode);
     static void byteSwapBuffer(char* buffer, unsigned int samples, RtAudioFormat format);
+    static void setConvertInfo(RtApi::StreamMode mode, RtApi::RtApiStream& stream_);
 };
 
 class RTAUDIO_DLL_PUBLIC RtApiStreamClass : public ErrorBase {

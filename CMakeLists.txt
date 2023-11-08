@@ -170,7 +170,7 @@ if (RTAUDIO_API_ASIO)
     include/iasiothiscallresolver.cpp)
   list(APPEND API_DEFS "-D__WINDOWS_ASIO__")
   list(APPEND API_LIST "asio")
-  list(APPEND rtaudio_SOURCES "asio/RtApiAsioEnumerator.cpp" "asio/RtApiAsioEnumerator.h" "asio/AsioCommon.h" "asio/AsioCommon.cpp" "asio/RtApiAsioProber.cpp" "asio/RtApiAsioProber.h" "asio/RtApiAsioStreamFactory.h" "asio/RtApiAsioStreamFactory.cpp")
+  list(APPEND rtaudio_SOURCES "asio/RtApiAsioEnumerator.cpp" "asio/RtApiAsioEnumerator.h" "asio/AsioCommon.h" "asio/AsioCommon.cpp" "asio/RtApiAsioProber.cpp" "asio/RtApiAsioProber.h" "asio/RtApiAsioStreamFactory.h" "asio/RtApiAsioStreamFactory.cpp" "asio/RtApiAsioStream.cpp" "asio/RtApiAsioStream.h")
 endif()
 
 # WASAPI
@@ -198,6 +198,12 @@ if (NEED_PTHREAD)
     CMAKE_THREAD_PREFER_PTHREAD
     THREADS_PREFER_PTHREAD_FLAG)
   list(APPEND LINKLIBS Threads::Threads)
+endif()
+
+set(LINKLIBS_PRIV)
+if (WIN32)
+    add_library(windowscommon STATIC "include/windowscommon.h" "include/windowscommon.cpp")
+    list(APPEND LINKLIBS_PRIV windowscommon)
 endif()
 
 # Create library targets.
@@ -248,7 +254,8 @@ target_include_directories(rtaudio
 # Set compile-time definitions
 target_compile_definitions(rtaudio PRIVATE ${API_DEFS})
 target_compile_definitions(rtaudio PRIVATE RTAUDIO_EXPORT)
-target_link_libraries(rtaudio ${LINKLIBS})
+target_link_libraries(rtaudio PUBLIC ${LINKLIBS})
+target_link_libraries(rtaudio PRIVATE ${LINKLIBS_PRIV})
 
 # Subdirs
 include(CTest)

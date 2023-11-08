@@ -7,6 +7,7 @@
 #include "RtAudio.h"
 #include "RtAudio.h"
 #include "RtAudio.h"
+#include "RtAudio.h"
 /************************************************************************/
 /*! \class RtAudio
     \brief Realtime audio i/o C++ classes.
@@ -788,9 +789,7 @@ RtApiStreamClass::~RtApiStreamClass()
     }
     if (stream_.deviceBuffer) {
         free(stream_.deviceBuffer);
-        free(stream_.deviceBuffer);
-        stream_.deviceBuffer[0] = 0;
-        stream_.deviceBuffer[1] = 0;
+        stream_.deviceBuffer = 0;
     }
     MUTEX_DESTROY(&stream_.mutex);
 }
@@ -878,6 +877,87 @@ void RtApi::byteSwapBuffer(char* buffer, unsigned int samples, RtAudioFormat for
 
             // Increment 5 more bytes.
             ptr += 5;
+        }
+    }
+}
+
+void RtApi::setConvertInfo(RtApi::StreamMode mode, RtApi::RtApiStream& stream_)
+{
+    unsigned int firstChannel = 0;
+    if (mode == RtApi::INPUT) { // convert device to user buffer
+        stream_.convertInfo[mode].inJump = stream_.nDeviceChannels[1];
+        stream_.convertInfo[mode].outJump = stream_.nUserChannels[1];
+        stream_.convertInfo[mode].inFormat = stream_.deviceFormat[1];
+        stream_.convertInfo[mode].outFormat = stream_.userFormat;
+    }
+    else { // convert user to device buffer
+        stream_.convertInfo[mode].inJump = stream_.nUserChannels[0];
+        stream_.convertInfo[mode].outJump = stream_.nDeviceChannels[0];
+        stream_.convertInfo[mode].inFormat = stream_.userFormat;
+        stream_.convertInfo[mode].outFormat = stream_.deviceFormat[0];
+    }
+
+    if (stream_.convertInfo[mode].inJump < stream_.convertInfo[mode].outJump)
+        stream_.convertInfo[mode].channels = stream_.convertInfo[mode].inJump;
+    else
+        stream_.convertInfo[mode].channels = stream_.convertInfo[mode].outJump;
+
+    // Set up the interleave/deinterleave offsets.
+    if (stream_.deviceInterleaved[mode] != stream_.userInterleaved) {
+        if ((mode == RtApi::OUTPUT && stream_.deviceInterleaved[mode]) ||
+            (mode == RtApi::INPUT && stream_.userInterleaved)) {
+            for (int k = 0; k < stream_.convertInfo[mode].channels; k++) {
+                stream_.convertInfo[mode].inOffset.push_back(k * stream_.bufferSize);
+                stream_.convertInfo[mode].outOffset.push_back(k);
+                stream_.convertInfo[mode].inJump = 1;
+            }
+        }
+        else {
+            for (int k = 0; k < stream_.convertInfo[mode].channels; k++) {
+                stream_.convertInfo[mode].inOffset.push_back(k);
+                stream_.convertInfo[mode].outOffset.push_back(k * stream_.bufferSize);
+                stream_.convertInfo[mode].outJump = 1;
+            }
+        }
+    }
+    else { // no (de)interleaving
+        if (stream_.userInterleaved) {
+            for (int k = 0; k < stream_.convertInfo[mode].channels; k++) {
+                stream_.convertInfo[mode].inOffset.push_back(k);
+                stream_.convertInfo[mode].outOffset.push_back(k);
+            }
+        }
+        else {
+            for (int k = 0; k < stream_.convertInfo[mode].channels; k++) {
+                stream_.convertInfo[mode].inOffset.push_back(k * stream_.bufferSize);
+                stream_.convertInfo[mode].outOffset.push_back(k * stream_.bufferSize);
+                stream_.convertInfo[mode].inJump = 1;
+                stream_.convertInfo[mode].outJump = 1;
+            }
+        }
+    }
+
+    // Add channel offset.
+    if (firstChannel > 0) {
+        if (stream_.deviceInterleaved[mode]) {
+            if (mode == RtApi::OUTPUT) {
+                for (int k = 0; k < stream_.convertInfo[mode].channels; k++)
+                    stream_.convertInfo[mode].outOffset[k] += firstChannel;
+            }
+            else {
+                for (int k = 0; k < stream_.convertInfo[mode].channels; k++)
+                    stream_.convertInfo[mode].inOffset[k] += firstChannel;
+            }
+        }
+        else {
+            if (mode == RtApi::OUTPUT) {
+                for (int k = 0; k < stream_.convertInfo[mode].channels; k++)
+                    stream_.convertInfo[mode].outOffset[k] += (firstChannel * stream_.bufferSize);
+            }
+            else {
+                for (int k = 0; k < stream_.convertInfo[mode].channels; k++)
+                    stream_.convertInfo[mode].inOffset[k] += (firstChannel * stream_.bufferSize);
+            }
         }
     }
 }
