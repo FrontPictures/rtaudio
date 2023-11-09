@@ -175,20 +175,20 @@ bool RtApiAsioStream::callbackEvent(long bufferIndex)
                     stream_.bufferSize * stream_.nDeviceChannels[1],
                     stream_.deviceFormat[1]);
             }
-            RtApi::convertBuffer(stream_, stream_.userBuffer[1], stream_.deviceBuffer.get(), stream_.convertInfo[1], stream_.bufferSize, RtApi::StreamMode::INPUT);
+            RtApi::convertBuffer(stream_, stream_.userBuffer[1].get(), stream_.deviceBuffer.get(), stream_.convertInfo[1], stream_.bufferSize, RtApi::StreamMode::INPUT);
         }
         else {
             int j = 0;
             for (auto& b : mBufferInfos) {
                 if (b.isInput != ASIOTrue)
                     continue;
-                memcpy(stream_.userBuffer[1] + (j++ * bufferBytes),
+                memcpy(stream_.userBuffer[1].get() + (j++ * bufferBytes),
                     b.buffers[bufferIndex],
                     bufferBytes);
             }
 
             if (stream_.doByteSwap[1]) {
-                RtApi::byteSwapBuffer(stream_.userBuffer[1],
+                RtApi::byteSwapBuffer(stream_.userBuffer[1].get(),
                     stream_.bufferSize * stream_.nUserChannels[1],
                     stream_.userFormat);
             }
@@ -196,14 +196,14 @@ bool RtApiAsioStream::callbackEvent(long bufferIndex)
     }
 
     double streamTime = getStreamTime();
-    callback(stream_.userBuffer[0], stream_.userBuffer[1],
+    callback(stream_.userBuffer[0].get(), stream_.userBuffer[1].get(),
         stream_.bufferSize, streamTime, status, stream_.callbackInfo.userData);
 
     if (stream_.mode == RtApi::OUTPUT || stream_.mode == RtApi::DUPLEX) {
         unsigned int bufferBytes = stream_.bufferSize * RtApi::formatBytes(stream_.deviceFormat[0]);
         if (stream_.doConvertBuffer[0]) {
 
-            RtApi::convertBuffer(stream_, stream_.deviceBuffer.get(), stream_.userBuffer[0], stream_.convertInfo[0], stream_.bufferSize, RtApi::StreamMode::OUTPUT);
+            RtApi::convertBuffer(stream_, stream_.deviceBuffer.get(), stream_.userBuffer[0].get(), stream_.convertInfo[0], stream_.bufferSize, RtApi::StreamMode::OUTPUT);
             if (stream_.doByteSwap[0])
                 RtApi::byteSwapBuffer(stream_.deviceBuffer.get(),
                     stream_.bufferSize * stream_.nDeviceChannels[0],
@@ -220,7 +220,7 @@ bool RtApiAsioStream::callbackEvent(long bufferIndex)
         else {
 
             if (stream_.doByteSwap[0])
-                RtApi::byteSwapBuffer(stream_.userBuffer[0],
+                RtApi::byteSwapBuffer(stream_.userBuffer[0].get(),
                     stream_.bufferSize * stream_.nUserChannels[0],
                     stream_.userFormat);
 

@@ -781,12 +781,6 @@ RtApiStreamClass::RtApiStreamClass(RtApi::RtApiStream stream) : stream_(std::mov
 
 RtApiStreamClass::~RtApiStreamClass()
 {
-    for (int i = 0; i < 2; i++) {
-        if (stream_.userBuffer[i]) {
-            free(stream_.userBuffer[i]);
-            stream_.userBuffer[i] = 0;
-        }
-    }    
     MUTEX_DESTROY(&stream_.mutex);
 }
 

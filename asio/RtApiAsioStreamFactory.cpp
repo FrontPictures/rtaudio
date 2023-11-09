@@ -117,7 +117,7 @@ namespace {
         if (bufferBytesOutput == 0) {
             return true;
         }
-        stream_.userBuffer[mode] = (char*)calloc(bufferBytesOutput, 1);
+        stream_.userBuffer[mode] = std::shared_ptr<char[]>(new char[bufferBytesOutput]);
         if (stream_.userBuffer[mode] == nullptr) {
             return false;
         }
@@ -187,8 +187,6 @@ std::shared_ptr<RtApiStreamClass> RtApiAsioStreamFactory::createStream(CreateStr
     apiAsioStream = stream.get();
     if (stream)
         return stream;
-    free(stream_.userBuffer[RtApi::OUTPUT]);
-    free(stream_.userBuffer[RtApi::INPUT]);
     apiAsioStream = nullptr;
     ASIODisposeBuffers();
     ASIOExit();
