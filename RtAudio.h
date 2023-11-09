@@ -524,10 +524,11 @@ public:
     void setErrorCallback(RtAudioErrorCallback errorCallback) { errorCallback_ = errorCallback; }
     void showWarnings(bool value) { showWarnings_ = value; }
     const std::string& getErrorText(void) const;
+
+    RtAudioErrorType error(RtAudioErrorType type, const std::string& message);
 protected:
     std::ostringstream errorStream_;
     RtAudioErrorCallback errorCallback_ = nullptr;
-    RtAudioErrorType error(RtAudioErrorType type, const std::string& message);
     RtAudioErrorType errorThread(RtAudioErrorType type, const std::string& message);
     RtAudioErrorType error(RtAudioErrorType type);
 private:
@@ -651,5 +652,9 @@ public:
     virtual ~RtApiStreamClassFactory() {}
     virtual RtAudio::Api getCurrentApi(void) = 0;
     virtual std::shared_ptr<RtApiStreamClass> createStream(CreateStreamParams params) = 0;
+
+protected:
+    bool setupStreamCommon(RtApi::RtApiStream& stream_);
+    bool setupStreamWithParams(RtApi::RtApiStream& stream_, const CreateStreamParams& params);
 };
 #endif

@@ -77,75 +77,6 @@ namespace {
             return false;
         return true;
     }
-
-    void setupStreamWithParams(RtApi::RtApiStream& stream_, const CreateStreamParams& params)
-    {
-        stream_.userFormat = params.format;
-        if (params.options && params.options->flags & RTAUDIO_NONINTERLEAVED) stream_.userInterleaved = false;
-        else stream_.userInterleaved = true;
-        stream_.sampleRate = params.sampleRate;
-        stream_.deviceId = params.busId;
-        stream_.mode = params.mode;
-        stream_.bufferSize = params.bufferSize;
-        stream_.nUserChannels[RtApi::OUTPUT] = params.channelsOutput;
-        stream_.nUserChannels[RtApi::INPUT] = params.channelsInput;
-        stream_.callbackInfo.callback = params.callback;
-        stream_.callbackInfo.userData = params.userData;
-    }
-
-    void setupStreamCommon(RtApi::RtApiStream& stream_)
-    {
-        stream_.channelOffset[RtApi::OUTPUT] = 0;
-        stream_.channelOffset[RtApi::INPUT] = 0;
-        stream_.doConvertBuffer[RtApi::OUTPUT] = false;
-        stream_.doConvertBuffer[RtApi::INPUT] = false;
-        if (stream_.userFormat != stream_.deviceFormat[RtApi::OUTPUT])
-            stream_.doConvertBuffer[RtApi::OUTPUT] = true;
-        if (stream_.userFormat != stream_.deviceFormat[RtApi::INPUT])
-            stream_.doConvertBuffer[RtApi::INPUT] = true;
-        if (stream_.userInterleaved != stream_.deviceInterleaved[RtApi::OUTPUT] &&
-            stream_.nUserChannels[RtApi::OUTPUT] > 1)
-            stream_.doConvertBuffer[RtApi::OUTPUT] = true;
-        if (stream_.userInterleaved != stream_.deviceInterleaved[RtApi::INPUT] &&
-            stream_.nUserChannels[RtApi::INPUT] > 1)
-            stream_.doConvertBuffer[RtApi::INPUT] = true;
-    }
-
-    bool allocateUserBuffer(RtApi::RtApiStream& stream_, RtApi::StreamMode mode)
-    {
-        unsigned long bufferBytesOutput = stream_.nUserChannels[mode] * stream_.bufferSize * RtApi::formatBytes(stream_.userFormat);
-        if (bufferBytesOutput == 0) {
-            return true;
-        }
-        stream_.userBuffer[mode] = std::shared_ptr<char[]>(new char[bufferBytesOutput]);
-        if (stream_.userBuffer[mode] == nullptr) {
-            return false;
-        }
-        return true;
-    }
-
-    bool allocateDeviceBuffer(RtApi::RtApiStream& stream_) {
-        unsigned long maxBuffferSize = 0;
-
-        if (stream_.doConvertBuffer[RtApi::OUTPUT] && stream_.nDeviceChannels[RtApi::OUTPUT] > 0) {
-            unsigned long bufferBytesOutput = stream_.nDeviceChannels[RtApi::OUTPUT] * stream_.bufferSize * RtApi::formatBytes(stream_.deviceFormat[RtApi::OUTPUT]);
-            maxBuffferSize = std::max(maxBuffferSize, bufferBytesOutput);
-        }
-
-        if (stream_.doConvertBuffer[RtApi::INPUT] && stream_.nDeviceChannels[RtApi::INPUT] > 0) {
-            unsigned long bufferBytesOutput = stream_.nDeviceChannels[RtApi::INPUT] * stream_.bufferSize * RtApi::formatBytes(stream_.deviceFormat[RtApi::INPUT]);
-            maxBuffferSize = std::max(maxBuffferSize, bufferBytesOutput);
-        }
-
-        if (maxBuffferSize == 0)
-            return true;
-
-        stream_.deviceBuffer = std::shared_ptr<char[]>(new char[maxBuffferSize]);
-        if (!stream_.deviceBuffer) {
-            return false;
-        }
-        return true;
-    }
 }
 
 
@@ -312,22 +243,11 @@ std::shared_ptr<RtApiAsioStream> RtApiAsioStreamFactory::createAsioStream(const 
         error(RTAUDIO_WARNING, errorStream_.str());
         return {};
     }
-    setupStreamWithParams(stream_, params);
-    setupStreamCommon(stream_);
-
-    if (allocateUserBuffer(stream_, RtApi::OUTPUT) == false) {
-        error(RTAUDIO_MEMORY_ERROR, "RtApiAsio::probeDeviceOpen: error allocating user buffer memory.");
+    if (setupStreamWithParams(stream_, params) == false) {
         return {};
     }
-    if (allocateUserBuffer(stream_, RtApi::INPUT) == false) {
-        error(RTAUDIO_MEMORY_ERROR, "RtApiAsio::probeDeviceOpen: error allocating user buffer memory.");
+    if (setupStreamCommon(stream_) == false) {
         return {};
     }
-    if (allocateDeviceBuffer(stream_) == false) {
-        error(RTAUDIO_MEMORY_ERROR, "RtApiAsio::probeDeviceOpen: error allocating user buffer memory.");
-        return {};
-    }
-    RtApi::setConvertInfo(RtApi::OUTPUT, stream_);
-    RtApi::setConvertInfo(RtApi::INPUT, stream_);
     return std::make_shared<RtApiAsioStream>(std::move(stream_), std::move(infos));
 }

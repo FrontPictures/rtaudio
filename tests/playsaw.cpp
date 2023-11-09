@@ -243,7 +243,7 @@ int main(int argc, char* argv[])
                 SLEEP(0);
                 continue;
             }
-            std::cout << "\nStream created!\n";
+            std::cout << "\nStream created! Buffer size: " << stream->getBufferSize() << "\n";
             stream->startStream();
             auto start_time = std::chrono::high_resolution_clock::now();
 
