@@ -166,16 +166,16 @@ bool RtApiAsioStream::callbackEvent(long bufferIndex)
             for (auto& b : mBufferInfos) {
                 if (b.isInput != ASIOTrue)
                     continue;
-                memcpy(stream_.deviceBuffer + (j++ * bufferBytes),
+                memcpy(stream_.deviceBuffer.get() + (j++ * bufferBytes),
                     b.buffers[bufferIndex],
                     bufferBytes);
             }
             if (stream_.doByteSwap[1]) {
-                RtApi::byteSwapBuffer(stream_.deviceBuffer,
+                RtApi::byteSwapBuffer(stream_.deviceBuffer.get(),
                     stream_.bufferSize * stream_.nDeviceChannels[1],
                     stream_.deviceFormat[1]);
             }
-            RtApi::convertBuffer(stream_, stream_.userBuffer[1], stream_.deviceBuffer, stream_.convertInfo[1], stream_.bufferSize, RtApi::StreamMode::INPUT);
+            RtApi::convertBuffer(stream_, stream_.userBuffer[1], stream_.deviceBuffer.get(), stream_.convertInfo[1], stream_.bufferSize, RtApi::StreamMode::INPUT);
         }
         else {
             int j = 0;
@@ -203,9 +203,9 @@ bool RtApiAsioStream::callbackEvent(long bufferIndex)
         unsigned int bufferBytes = stream_.bufferSize * RtApi::formatBytes(stream_.deviceFormat[0]);
         if (stream_.doConvertBuffer[0]) {
 
-            RtApi::convertBuffer(stream_, stream_.deviceBuffer, stream_.userBuffer[0], stream_.convertInfo[0], stream_.bufferSize, RtApi::StreamMode::OUTPUT);
+            RtApi::convertBuffer(stream_, stream_.deviceBuffer.get(), stream_.userBuffer[0], stream_.convertInfo[0], stream_.bufferSize, RtApi::StreamMode::OUTPUT);
             if (stream_.doByteSwap[0])
-                RtApi::byteSwapBuffer(stream_.deviceBuffer,
+                RtApi::byteSwapBuffer(stream_.deviceBuffer.get(),
                     stream_.bufferSize * stream_.nDeviceChannels[0],
                     stream_.deviceFormat[0]);
 
@@ -214,7 +214,7 @@ bool RtApiAsioStream::callbackEvent(long bufferIndex)
                 if (b.isInput == ASIOTrue)
                     continue;
                 memcpy(b.buffers[bufferIndex],
-                    &stream_.deviceBuffer[j++ * bufferBytes], bufferBytes);
+                    &stream_.deviceBuffer.get()[j++ * bufferBytes], bufferBytes);
             }
         }
         else {

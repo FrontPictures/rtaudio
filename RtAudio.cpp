@@ -786,11 +786,7 @@ RtApiStreamClass::~RtApiStreamClass()
             free(stream_.userBuffer[i]);
             stream_.userBuffer[i] = 0;
         }
-    }
-    if (stream_.deviceBuffer) {
-        free(stream_.deviceBuffer);
-        stream_.deviceBuffer = 0;
-    }
+    }    
     MUTEX_DESTROY(&stream_.mutex);
 }
 

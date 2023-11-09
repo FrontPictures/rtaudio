@@ -140,7 +140,7 @@ namespace {
         if (maxBuffferSize == 0)
             return true;
 
-        stream_.deviceBuffer = (char*)calloc(maxBuffferSize, 1);
+        stream_.deviceBuffer = std::shared_ptr<char[]>(new char[maxBuffferSize]);
         if (!stream_.deviceBuffer) {
             return false;
         }
@@ -189,7 +189,6 @@ std::shared_ptr<RtApiStreamClass> RtApiAsioStreamFactory::createStream(CreateStr
         return stream;
     free(stream_.userBuffer[RtApi::OUTPUT]);
     free(stream_.userBuffer[RtApi::INPUT]);
-    free(stream_.deviceBuffer);
     apiAsioStream = nullptr;
     ASIODisposeBuffers();
     ASIOExit();
