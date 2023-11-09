@@ -1,5 +1,6 @@
 #include "RtAudio.h"
 #include "WasapiCommon.h"
+#include "windowscommon.h"
 
 class RtApiWasapiProber : public RtApiProber, public RtApiWasapiCommon {
 public:

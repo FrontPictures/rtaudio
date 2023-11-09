@@ -23,11 +23,11 @@ RtApiWasapiStream::RtApiWasapiStream(RtApi::RtApiStream stream, Microsoft::WRL::
     Microsoft::WRL::ComPtr<IAudioRenderClient> renderClient,
     Microsoft::WRL::ComPtr<IAudioCaptureClient> captureClient,
     UNIQUE_FORMAT deviceFormat, UNIQUE_EVENT streamEvent,
-    AUDCLNT_SHAREMODE shareMode, RtApi::StreamMode mode) :
+    AUDCLNT_SHAREMODE shareMode) :
     RtApiStreamClass(std::move(stream)),
     mAudioClient(audioClient), mRenderClient(renderClient),
     mCaptureClient(captureClient), mDeviceFormat(std::move(deviceFormat)),
-    mStreamEvent(std::move(streamEvent)), mShareMode(shareMode), mMode(mode)
+    mStreamEvent(std::move(streamEvent)), mShareMode(shareMode)
 {
 }
 
@@ -140,7 +140,7 @@ void RtApiWasapiStream::wasapiThread()
             BYTE* streamBuffer = NULL;
             DWORD captureFlags = 0;
 
-            if (mMode == RtApi::OUTPUT) {
+            if (stream_.mode == RtApi::OUTPUT) {
                 unsigned int numFramesPadding = 0;
                 if (mShareMode == AUDCLNT_SHAREMODE_SHARED) {
                     hr = mAudioClient->GetCurrentPadding(&numFramesPadding);
@@ -162,7 +162,7 @@ void RtApiWasapiStream::wasapiThread()
                     break;
                 }
                 if (stream_.doConvertBuffer[RtApi::StreamMode::OUTPUT]) {
-                    userBufferOutput = stream_.userBuffer[RtApi::OUTPUT];
+                    userBufferOutput = stream_.userBuffer[RtApi::OUTPUT].get();
                 }
                 else {
                     userBufferOutput = streamBuffer;
@@ -179,8 +179,8 @@ void RtApiWasapiStream::wasapiThread()
                     continue;
                 }
                 if (stream_.doConvertBuffer[RtApi::INPUT]) {
-                    userBufferInput = stream_.userBuffer[RtApi::INPUT];
-                    RtApi::convertBuffer(stream_, stream_.userBuffer[RtApi::INPUT],
+                    userBufferInput = stream_.userBuffer[RtApi::INPUT].get();
+                    RtApi::convertBuffer(stream_, stream_.userBuffer[RtApi::INPUT].get(),
                         (char*)streamBuffer,
                         stream_.convertInfo[RtApi::INPUT], bufferFrameAvailableCount, RtApi::INPUT);
                 }
@@ -197,13 +197,13 @@ void RtApiWasapiStream::wasapiThread()
                 stream_.callbackInfo.userData);
             tickStreamTime();
 
-            if (mMode == RtApi::OUTPUT) {
-                if (stream_.doConvertBuffer[mMode])
+            if (stream_.mode == RtApi::OUTPUT) {
+                if (stream_.doConvertBuffer[RtApi::OUTPUT])
                 {
                     // Convert callback buffer to stream format
                     RtApi::convertBuffer(stream_, (char*)streamBuffer,
-                        stream_.userBuffer[mMode],
-                        stream_.convertInfo[mMode], bufferFrameAvailableCount, mMode);
+                        stream_.userBuffer[RtApi::OUTPUT].get(),
+                        stream_.convertInfo[RtApi::OUTPUT], bufferFrameAvailableCount, RtApi::OUTPUT);
                 }
                 hr = mRenderClient->ReleaseBuffer(bufferFrameAvailableCount, 0);
                 if (FAILED(hr)) {

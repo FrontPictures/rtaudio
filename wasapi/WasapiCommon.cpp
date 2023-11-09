@@ -1,6 +1,7 @@
 #include "WasapiCommon.h"
 #include "utils.h"
 #include <functiondiscoverykeys_devpkey.h>
+#include "windowscommon.h"
 
 RtApiWasapiCommon::RtApiWasapiCommon()
 {

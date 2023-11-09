@@ -4,10 +4,11 @@
 #include <memory>
 #include <Audioclient.h>
 #include "WasapiCommon.h"
+#include <windowscommon.h>
 
 class RtApiWasapiStream : public RtApiStreamClass, public RtApiWasapiCommon {
 public:
-    RtApiWasapiStream(RtApi::RtApiStream stream, Microsoft::WRL::ComPtr<IAudioClient> audioClient, Microsoft::WRL::ComPtr<IAudioRenderClient> renderClient, Microsoft::WRL::ComPtr<IAudioCaptureClient> captureClient, UNIQUE_FORMAT deviceFormat, UNIQUE_EVENT streamEvent, AUDCLNT_SHAREMODE shareMode, RtApi::StreamMode mode);
+    RtApiWasapiStream(RtApi::RtApiStream stream, Microsoft::WRL::ComPtr<IAudioClient> audioClient, Microsoft::WRL::ComPtr<IAudioRenderClient> renderClient, Microsoft::WRL::ComPtr<IAudioCaptureClient> captureClient, UNIQUE_FORMAT deviceFormat, UNIQUE_EVENT streamEvent, AUDCLNT_SHAREMODE shareMode);
 
     RtApiWasapiStream(const RtApiWasapiStream&) = delete;
     ~RtApiWasapiStream();
@@ -25,5 +26,4 @@ private:
     UNIQUE_FORMAT mDeviceFormat;
     UNIQUE_EVENT mStreamEvent;
     AUDCLNT_SHAREMODE mShareMode;
-    RtApi::StreamMode mMode;
 };

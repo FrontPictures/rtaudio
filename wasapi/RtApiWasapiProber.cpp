@@ -1,6 +1,7 @@
 #include "RtApiWasapiProber.h"
 #include <audioclient.h>
 #include "utils.h"
+#include <cassert>
 
 std::optional<RtAudio::DeviceInfo> RtApiWasapiProber::probeDevice(const std::string& busId)
 {
@@ -51,6 +52,8 @@ std::optional<RtAudio::DeviceInfo> RtApiWasapiProber::probeDevice(const std::str
         error(errorType, "RtApiWasapi::probeDeviceInfo: Unable to retrieve device mix format.");
         return {};
     }
+
+    assert(deviceFormat);
 
     auto name_opt = probeWasapiDeviceName(devicePtr.Get());
     if (!name_opt) {
