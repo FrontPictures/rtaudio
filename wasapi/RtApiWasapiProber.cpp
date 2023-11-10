@@ -48,12 +48,10 @@ std::optional<RtAudio::DeviceInfo> RtApiWasapiProber::probeDevice(const std::str
     }
 
     res = CONSTRUCT_UNIQUE_FORMAT(audioClient->GetMixFormat, deviceFormat);
-    if (FAILED(hr)) {
+    if (FAILED(hr) || !deviceFormat) {
         error(errorType, "RtApiWasapi::probeDeviceInfo: Unable to retrieve device mix format.");
         return {};
     }
-
-    assert(deviceFormat);
 
     auto name_opt = probeWasapiDeviceName(devicePtr.Get());
     if (!name_opt) {

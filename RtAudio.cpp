@@ -1,14 +1,4 @@
 #include "RtAudio.h"
-#include "RtAudio.h"
-#include "RtAudio.h"
-#include "RtAudio.h"
-#include "RtAudio.h"
-#include "RtAudio.h"
-#include "RtAudio.h"
-#include "RtAudio.h"
-#include "RtAudio.h"
-#include "RtAudio.h"
-#include "RtAudio.h"
 /************************************************************************/
 /*! \class RtAudio
     \brief Realtime audio i/o C++ classes.
@@ -832,6 +822,32 @@ bool RtApiStreamClass::isStreamRunning() {
 unsigned int RtApiStreamClass::getBufferSize(void) const
 {
     return stream_.bufferSize;
+}
+
+RtAudioErrorType RtApiStreamClass::startStreamCheck()
+{
+    if (stream_.state != RtApi::STREAM_STOPPED) {
+        if (stream_.state == RtApi::STREAM_RUNNING)
+            return error(RTAUDIO_WARNING, "RtApiWasapi::startStream(): the stream is already running!");
+        else if (stream_.state == RtApi::STREAM_STOPPING || stream_.state == RtApi::STREAM_CLOSED)
+            return error(RTAUDIO_WARNING, "RtApiWasapi::startStream(): the stream is stopping or closed!");
+        else if (stream_.state == RtApi::STREAM_ERROR)
+            return error(RTAUDIO_WARNING, "RtApiWasapi::startStream(): the stream is in error state!");
+        return error(RTAUDIO_WARNING, "RtApiWasapi::startStream(): the stream is not stopped!");
+    }
+    return RTAUDIO_NO_ERROR;
+}
+
+RtAudioErrorType RtApiStreamClass::stopStreamCheck()
+{
+    if (stream_.state != RtApi::STREAM_RUNNING && stream_.state != RtApi::STREAM_ERROR) {
+        if (stream_.state == RtApi::STREAM_STOPPED)
+            return error(RTAUDIO_WARNING, "RtApiWasapi::stopStream(): the stream is already stopped!");
+        else if (stream_.state == RtApi::STREAM_CLOSED)
+            return error(RTAUDIO_WARNING, "RtApiWasapi::stopStream(): the stream is closed!");
+        return error(RTAUDIO_WARNING, "RtApiWasapi::stopStream(): stream is not running!");
+    }
+    return RTAUDIO_NO_ERROR;
 }
 
 void RtApi::byteSwapBuffer(char* buffer, unsigned int samples, RtAudioFormat format)

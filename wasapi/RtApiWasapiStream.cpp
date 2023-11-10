@@ -39,14 +39,9 @@ RtApiWasapiStream::~RtApiWasapiStream()
 RtAudioErrorType RtApiWasapiStream::startStream(void)
 {
     MutexRaii<StreamMutex> lock(stream_.mutex);
-    if (stream_.state != RtApi::STREAM_STOPPED) {
-        if (stream_.state == RtApi::STREAM_RUNNING)
-            return error(RTAUDIO_WARNING, "RtApiWasapi::startStream(): the stream is already running!");
-        else if (stream_.state == RtApi::STREAM_STOPPING || stream_.state == RtApi::STREAM_CLOSED)
-            return error(RTAUDIO_WARNING, "RtApiWasapi::startStream(): the stream is stopping or closed!");
-        else if (stream_.state == RtApi::STREAM_ERROR)
-            return error(RTAUDIO_WARNING, "RtApiWasapi::startStream(): the stream is in error state!");
-        return error(RTAUDIO_WARNING, "RtApiWasapi::startStream(): the stream is not stopped!");
+    auto startRes = startStreamCheck();
+    if (startRes != RTAUDIO_NO_ERROR) {
+        return startRes;
     }
     HRESULT hr = mAudioClient->Start();
     if (FAILED(hr)) {
@@ -72,12 +67,9 @@ RtAudioErrorType RtApiWasapiStream::stopStream(void)
 {
     {
         MutexRaii<StreamMutex> lock(stream_.mutex);
-        if (stream_.state != RtApi::STREAM_RUNNING && stream_.state != RtApi::STREAM_ERROR) {
-            if (stream_.state == RtApi::STREAM_STOPPED)
-                return error(RTAUDIO_WARNING, "RtApiWasapi::stopStream(): the stream is already stopped!");
-            else if (stream_.state == RtApi::STREAM_CLOSED)
-                return error(RTAUDIO_WARNING, "RtApiWasapi::stopStream(): the stream is closed!");
-            return error(RTAUDIO_WARNING, "RtApiWasapi::stopStream(): stream is not running!");
+        auto stopRes = stopStreamCheck();
+        if (stopRes != RTAUDIO_NO_ERROR) {
+            return stopRes;
         }
         HRESULT hr = mAudioClient->Stop();
         if (FAILED(hr)) {

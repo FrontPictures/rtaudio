@@ -631,6 +631,9 @@ public:
     void tickStreamTime(void) { stream_.streamTime += (stream_.bufferSize * 1.0 / stream_.sampleRate); }
     unsigned int getBufferSize(void) const;
 protected:
+    RtAudioErrorType startStreamCheck();
+    RtAudioErrorType stopStreamCheck();
+
     RtApi::RtApiStream stream_;
 };
 

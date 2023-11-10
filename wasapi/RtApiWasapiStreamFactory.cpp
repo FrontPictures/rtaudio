@@ -59,11 +59,6 @@ namespace {
         }
         return 0;
     }
-
-    void setConvertInfo(RtApi::StreamMode mode, RtApi::RtApiStream& stream_)
-    {
-
-    }
 }
 
 std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(CreateStreamParams params)
@@ -241,6 +236,9 @@ std::shared_ptr<RtApiStreamClass> RtApiWasapiStreamFactory::createStream(CreateS
     }
 
     if (setupStreamWithParams(stream_, params) == false) {
+        return {};
+    }
+    if (setupStreamCommon(stream_) == false) {
         return {};
     }
 
