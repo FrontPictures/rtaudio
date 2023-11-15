@@ -96,7 +96,8 @@ const unsigned int RtAudio::SAMPLE_RATES[] = {
 
 #if defined(__LINUX_ALSA__)
 
-#include "alsa/RtApiAlsa.h"
+#include "alsa/RtApiAlsaEnumerator.h"
+#include "alsa/RtApiAlsaProber.h"
 
 #endif
 
@@ -298,7 +299,7 @@ std::shared_ptr<RtApiEnumerator> RtAudio::GetRtAudioEnumerator(RtAudio::Api api)
 #endif
 #if defined(__LINUX_ALSA__)
     if (api == LINUX_ALSA)
-        rtapi_ = new RtApiAlsa();
+        return std::make_shared<RtApiAlsaEnumerator>();
 #endif
 #if defined(__LINUX_PULSE__)
     if (api == LINUX_PULSE)
@@ -325,6 +326,10 @@ std::shared_ptr<RtApiEnumerator> RtAudio::GetRtAudioEnumerator(RtAudio::Api api)
 
 std::shared_ptr<RtApiProber> RtAudio::GetRtAudioProber(RtAudio::Api api)
 {
+#if defined(__LINUX_ALSA__)
+    if (api == LINUX_ALSA)
+        return std::make_shared<RtApiAlsaProber>();
+#endif
 #if defined(__WINDOWS_ASIO__)
     if (api == WINDOWS_ASIO)
         return std::make_shared<RtApiAsioProber>();
@@ -1053,7 +1058,7 @@ bool RtApiStreamClassFactory::setupStreamWithParams(RtApi::RtApiStream& stream_,
     stream_.bufferSize = params.bufferSize;
     stream_.nUserChannels[RtApi::OUTPUT] = params.channelsOutput;
     stream_.nUserChannels[RtApi::INPUT] = params.channelsInput;
-    stream_.callbackInfo.callback = params.callback;
+    stream_.callbackInfo.callback = reinterpret_cast<void*>(params.callback);
     stream_.callbackInfo.userData = params.userData;
     return true;
 }

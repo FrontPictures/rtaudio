@@ -5,6 +5,7 @@
 #include "cliutils.h"
 #include "ringbuf.hpp"
 #include <thread>
+#include <atomic>
 
 using namespace std;
 
