@@ -181,7 +181,7 @@ bool isInterlievedAlsa(snd_pcm_access_t access)
 
 bool fillRtApiStream(RtApi::StreamMode streamMode,
                      RtApi::RtApiStream &stream_,
-                     RtApiAlsaStreamFactory::streamOpenData openData)
+                     const RtApiAlsaStreamFactory::streamOpenData &openData)
 {
     auto rtFormat = getRtFormat(openData.deviceFormat);
     if (!rtFormat) {
@@ -194,27 +194,17 @@ bool fillRtApiStream(RtApi::StreamMode streamMode,
     stream_.latency[streamMode] = 0;
     return true;
 }
-}
 
+bool isFormatsSuitable(const RtApiAlsaStreamFactory::streamOpenData &f1,
+                       const RtApiAlsaStreamFactory::streamOpenData &f2)
+{
+    if (f1.bufferSize != f2.bufferSize)
+        return false;
+    return true;
+}
+}
 
 std::shared_ptr<RtApiStreamClass> RtApiAlsaStreamFactory::createStream(CreateStreamParams params)
-{
-    std::optional<RtApiAlsaStreamFactory::streamOpenData> openDataPlayback;
-    std::optional<RtApiAlsaStreamFactory::streamOpenData> openDataCapture;
-    auto stream = createStream2(params, openDataPlayback, openDataCapture);
-    if (stream)
-        return stream;
-    if (openDataCapture)
-        openDataCapture->free();
-    if (openDataPlayback)
-        openDataPlayback->free();
-    return {};
-}
-
-std::shared_ptr<RtApiStreamClass> RtApiAlsaStreamFactory::createStream2(
-    CreateStreamParams params,
-    std::optional<streamOpenData> &openDataPlayback,
-    std::optional<streamOpenData> &openDataCapture)
 {
 #if defined(__RTAUDIO_DEBUG__)
     struct SndOutputTdealloc
@@ -235,10 +225,12 @@ std::shared_ptr<RtApiStreamClass> RtApiAlsaStreamFactory::createStream2(
     if (params.options && params.options->flags & RTAUDIO_ALSA_NONBLOCK) {
         openMode = SND_PCM_NONBLOCK;
     }
+    std::optional<streamOpenData> openDataPlayback;
+    std::optional<streamOpenData> openDataCapture;
 
     snd_pcm_stream_t stream = SND_PCM_STREAM_PLAYBACK;
     if (params.mode == RtApi::StreamMode::OUTPUT || params.mode == RtApi::StreamMode::DUPLEX) {
-        openDataPlayback = createStreamDirection(stream, params, openMode, out);
+        openDataPlayback = createStreamDirectionHandle(stream, params, openMode, out);
         if (!openDataPlayback) {
             return {};
         }
@@ -246,18 +238,20 @@ std::shared_ptr<RtApiStreamClass> RtApiAlsaStreamFactory::createStream2(
 
     stream = SND_PCM_STREAM_CAPTURE;
     if (params.mode == RtApi::StreamMode::INPUT || params.mode == RtApi::StreamMode::DUPLEX) {
-        openDataCapture = createStreamDirection(stream, params, openMode, out);
+        openDataCapture = createStreamDirectionHandle(stream, params, openMode, out);
         if (!openDataCapture) {
             return {};
         }
     }
 
-    RtApi::RtApiStream stream_{};
-
-    if (openDataPlayback && openDataCapture) {
+    if (params.mode == RtApi::DUPLEX && (openDataPlayback && openDataCapture)) {
         if (openDataPlayback->bufferSize != openDataCapture->bufferSize) {
             error(RTAUDIO_SYSTEM_ERROR, "Input and output buffer size mismatch");
             return {};
+        }
+        if (snd_pcm_link(openDataPlayback->han.handle(), openDataCapture->han.handle()) != 0) {
+            error(RTAUDIO_WARNING,
+                  "RtApiAlsa::probeDeviceOpen: unable to synchronize input and output devices.");
         }
     }
     if (openDataPlayback)
@@ -265,6 +259,7 @@ std::shared_ptr<RtApiStreamClass> RtApiAlsaStreamFactory::createStream2(
     if (openDataCapture)
         params.bufferSize = openDataCapture->bufferSize;
 
+    RtApi::RtApiStream stream_{};
     if (openDataPlayback) {
         fillRtApiStream(RtApi::OUTPUT, stream_, openDataPlayback.value());
     }
@@ -278,54 +273,25 @@ std::shared_ptr<RtApiStreamClass> RtApiAlsaStreamFactory::createStream2(
     if (setupStreamCommon(stream_) == false) {
         return {};
     }
-    if (false && params.mode == RtApi::DUPLEX && (openDataPlayback && openDataCapture)) {
-        if (snd_pcm_link(openDataPlayback->phandle, openDataCapture->phandle) != 0) {
-            error(RTAUDIO_WARNING,
-                  "RtApiAlsa::probeDeviceOpen: unable to synchronize input and output devices.");
-        }
-    }
     return std::make_shared<RtApiAlsaStream>(std::move(stream_),
-                                             openDataPlayback ? openDataPlayback->phandle : nullptr,
-                                             openDataCapture ? openDataCapture->phandle : nullptr);
-}
-
-struct streamOpenData{
-    snd_pcm_t *phandle = nullptr;
-    snd_pcm_access_t deviceAccessMode = SND_PCM_ACCESS_MMAP_INTERLEAVED;
-    snd_pcm_format_t deviceFormat = SND_PCM_FORMAT_UNKNOWN;
-    bool doByteSwap=false;
-    unsigned int deviceChannels = 0;
-    unsigned int periods = 1;
-    unsigned int bufferSize = 0;
-};
-
-std::optional<RtApiAlsaStreamFactory::streamOpenData> RtApiAlsaStreamFactory::createStreamDirection(
-    snd_pcm_stream_t stream, CreateStreamParams params, int openMode, snd_output_t *out)
-{
-    snd_pcm_t *phandle = nullptr;
-    int result = 0;
-    result = snd_pcm_open(&phandle, params.busId.c_str(), stream, openMode);
-    if (result < 0) {
-        errorStream_ << "RtApiAlsa::probeDeviceOpen: pcm device (" << params.busId
-                     << ") won't open.";
-        error(RTAUDIO_SYSTEM_ERROR, errorStream_.str());
-        return {};
-    }
-    auto openData = createStreamDirectionHandle(stream, params, out, phandle);
-    if (!openData) {
-        snd_pcm_close(phandle);
-    } else {
-        openData->phandle = phandle;
-    }
-    return openData;
+                                             openDataPlayback ? std::move(openDataPlayback->han)
+                                                              : SndPcmHandle(),
+                                             openDataCapture ? std::move(openDataCapture->han)
+                                                             : SndPcmHandle());
 }
 
 std::optional<RtApiAlsaStreamFactory::streamOpenData>
 RtApiAlsaStreamFactory::createStreamDirectionHandle(snd_pcm_stream_t stream,
                                                     CreateStreamParams params,
-                                                    snd_output_t *out,
-                                                    snd_pcm_t *phandle)
+                                                    int openMode,
+                                                    snd_output_t *out)
 {
+    streamOpenData data;
+    data.han = SndPcmHandle(params.busId.c_str(), stream, openMode);
+    if (data.han.isValid() == false)
+        return {};
+    snd_pcm_t *phandle = data.han.handle();
+
     snd_pcm_access_t deviceAccessMode = SND_PCM_ACCESS_MMAP_INTERLEAVED;
     snd_pcm_format_t deviceFormat = SND_PCM_FORMAT_UNKNOWN;
     bool doByteSwap = false;
@@ -445,8 +411,6 @@ RtApiAlsaStreamFactory::createStreamDirectionHandle(snd_pcm_stream_t stream,
         error(RTAUDIO_SYSTEM_ERROR, errorStream_.str());
         return {};
     }
-
-    streamOpenData data{};
     data.bufferSize = bufferSize;
     data.deviceAccessMode = deviceAccessMode;
     data.deviceChannels = deviceChannels;
@@ -454,12 +418,4 @@ RtApiAlsaStreamFactory::createStreamDirectionHandle(snd_pcm_stream_t stream,
     data.doByteSwap = doByteSwap;
     data.periods = periods;
     return data;
-}
-
-void RtApiAlsaStreamFactory::streamOpenData::free()
-{
-    if (phandle) {
-        snd_pcm_close(phandle);
-        phandle = 0;
-    }
 }

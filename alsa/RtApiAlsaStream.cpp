@@ -11,11 +11,11 @@ void *alsaCallbackHandler(void *ptr)
 } // namespace
 
 RtApiAlsaStream::RtApiAlsaStream(RtApi::RtApiStream stream,
-                                 snd_pcm_t *phandlePlayback,
-                                 snd_pcm_t *phandleCapture)
+                                 SndPcmHandle phandlePlayback,
+                                 SndPcmHandle phandleCapture)
     : RtApiStreamClass(std::move(stream))
-    , mHandlePlayback(phandlePlayback)
-    , mHandleCapture(phandleCapture)
+    , mHandlePlayback(std::move(phandlePlayback))
+    , mHandleCapture(std::move(phandleCapture))
 {
     setupThread();
 }
@@ -31,13 +31,6 @@ RtApiAlsaStream::~RtApiAlsaStream()
 
     if (stream_.callbackInfo.thread) {
         pthread_join(stream_.callbackInfo.thread, NULL);
-    }
-
-    if (mHandlePlayback) {
-        snd_pcm_close(mHandlePlayback);
-    }
-    if (mHandleCapture) {
-        snd_pcm_close(mHandleCapture);
     }
 }
 
@@ -138,7 +131,7 @@ bool RtApiAlsaStream::processInput()
     int result = 0;
     char *buffer = nullptr;
     int channels = 0;
-    snd_pcm_t *handle = mHandleCapture;
+    snd_pcm_t *handle = mHandleCapture.handle();
     RtAudioFormat format;
 
     // Setup parameters.
@@ -210,7 +203,7 @@ bool RtApiAlsaStream::processOutput()
     int result = 0;
     char *buffer = nullptr;
     int channels = 0;
-    snd_pcm_t *handle = mHandlePlayback;
+    snd_pcm_t *handle = mHandlePlayback.handle();
     RtAudioFormat format;
 
     // Setup parameters and do buffer conversion if necessary.

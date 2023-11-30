@@ -1,6 +1,7 @@
 #pragma once
 
 #include "RtAudio.h"
+#include "SndPcmHandle.h"
 #include "alsa/asoundlib.h"
 #include <atomic>
 #include <condition_variable>
@@ -9,8 +10,8 @@ class RtApiAlsaStream : public RtApiStreamClass
 {
 public:
     RtApiAlsaStream(RtApi::RtApiStream stream,
-                    snd_pcm_t *phandlePlayback,
-                    snd_pcm_t *phandleCapture);
+                    SndPcmHandle phandlePlayback,
+                    SndPcmHandle phandleCapture);
     ~RtApiAlsaStream();
     RtAudio::Api getCurrentApi(void) override { return RtAudio::LINUX_ALSA; }
     RtAudioErrorType startStream(void) override;
@@ -36,8 +37,8 @@ private:
     std::condition_variable mThreadCV;
     std::condition_variable mThreadPausedCV;
 
-    snd_pcm_t *mHandlePlayback = nullptr;
-    snd_pcm_t *mHandleCapture = nullptr;
+    SndPcmHandle mHandlePlayback;
+    SndPcmHandle mHandleCapture;
 
     bool mXrunOutput = false;
     bool mXrunInput = false;
