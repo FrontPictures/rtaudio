@@ -70,9 +70,6 @@ std::optional<RtAudio::DeviceInfo> RtApiAlsaProber::probeDevice(const std::strin
 
 std::optional<RtAudio::DeviceInfo> RtApiAlsaProber::probeDeviceHandles(snd_pcm_t * phandlePlayback, snd_pcm_t * phandleCapture, const char* busId)
 {
-
-    //snd_pcm_info_get_card();
-
     int result = 0;
     RtAudio::DeviceInfo info{};
     snd_pcm_hw_params_t *paramsPlayback = nullptr;

@@ -158,7 +158,7 @@ int main(int argc, char* argv[]) {
             continue;
         }
         stream->startStream();
-        std::cout << "Playback... (buffer size = " << bufferFrames << ")" << endl;
+        std::cout << "Playback... (buffer size = " << stream->getBufferSize() << ")" << endl;
         auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time).count();
         while (stream->isStreamRunning() && elapsed_ms < durationMs) {
             elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time).count();

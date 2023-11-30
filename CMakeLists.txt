@@ -134,7 +134,10 @@ if (RTAUDIO_API_ALSA)
   list(APPEND API_DEFS "-D__LINUX_ALSA__")
   list(APPEND API_LIST "alsa")
   list(APPEND rtaudio_SOURCES "alsa/RtApiAlsaEnumerator.cpp" "alsa/RtApiAlsaEnumerator.h"
-    "alsa/RtApiAlsaProber.cpp" "alsa/RtApiAlsaProber.h" "alsa/AlsaCommon.cpp" "alsa/AlsaCommon.h")
+    "alsa/RtApiAlsaProber.cpp" "alsa/RtApiAlsaProber.h" "alsa/AlsaCommon.cpp" "alsa/AlsaCommon.h"
+   "alsa/RtApiAlsaStreamFactory.h" "alsa/RtApiAlsaStreamFactory.cpp"
+   "alsa/RtApiAlsaStream.h" "alsa/RtApiAlsaStream.cpp"
+  "alsa/SndPcmHandle.h" "alsa/SndPcmHandle.cpp")
 endif()
 
 # Pulse

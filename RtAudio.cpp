@@ -98,6 +98,7 @@ const unsigned int RtAudio::SAMPLE_RATES[] = {
 
 #include "alsa/RtApiAlsaEnumerator.h"
 #include "alsa/RtApiAlsaProber.h"
+#include "alsa/RtApiAlsaStreamFactory.h"
 
 #endif
 
@@ -343,6 +344,10 @@ std::shared_ptr<RtApiProber> RtAudio::GetRtAudioProber(RtAudio::Api api)
 
 std::shared_ptr<RtApiStreamClassFactory> RtAudio::GetRtAudioStreamFactory(RtAudio::Api api)
 {
+#if defined(__LINUX_ALSA__)
+    if (api == LINUX_ALSA)
+        return std::make_shared<RtApiAlsaStreamFactory>();
+#endif
 #if defined(__WINDOWS_ASIO__)
     if (api == WINDOWS_ASIO)
         return std::make_shared<RtApiAsioStreamFactory>();
@@ -1050,15 +1055,26 @@ bool RtApiStreamClassFactory::setupStreamCommon(RtApi::RtApiStream& stream_)
 bool RtApiStreamClassFactory::setupStreamWithParams(RtApi::RtApiStream& stream_, const CreateStreamParams& params)
 {
     stream_.userFormat = params.format;
-    if (params.options && params.options->flags & RTAUDIO_NONINTERLEAVED) stream_.userInterleaved = false;
-    else stream_.userInterleaved = true;
+    if (params.options) {
+        if (params.options->flags & RTAUDIO_NONINTERLEAVED)
+            stream_.userInterleaved = false;
+        else
+            stream_.userInterleaved = true;
+
+        if (params.options->flags & RTAUDIO_SCHEDULE_REALTIME)
+            stream_.callbackInfo.doRealtime = true;
+        else
+            stream_.callbackInfo.doRealtime = false;
+
+        stream_.callbackInfo.priority = params.options->priority;
+    }
     stream_.sampleRate = params.sampleRate;
     stream_.deviceId = params.busId;
     stream_.mode = params.mode;
     stream_.bufferSize = params.bufferSize;
     stream_.nUserChannels[RtApi::OUTPUT] = params.channelsOutput;
     stream_.nUserChannels[RtApi::INPUT] = params.channelsInput;
-    stream_.callbackInfo.callback = reinterpret_cast<void*>(params.callback);
+    stream_.callbackInfo.callback = reinterpret_cast<void *>(params.callback);
     stream_.callbackInfo.userData = params.userData;
     return true;
 }
