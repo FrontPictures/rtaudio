@@ -104,7 +104,8 @@ const unsigned int RtAudio::SAMPLE_RATES[] = {
 
 #if defined(__LINUX_PULSE__)
 
-#include "pulse/RtApiPulse.h"
+#include "pulse/RtApiPulseEnumerator.h"
+#include "pulse/RtApiPulseProber.h"
 
 #endif
 
@@ -304,7 +305,7 @@ std::shared_ptr<RtApiEnumerator> RtAudio::GetRtAudioEnumerator(RtAudio::Api api)
 #endif
 #if defined(__LINUX_PULSE__)
     if (api == LINUX_PULSE)
-        rtapi_ = new RtApiPulse();
+        return std::make_shared<RtApiPulseEnumerator>();
 #endif
 #if defined(__WINDOWS_ASIO__)
     if (api == WINDOWS_ASIO)
@@ -327,6 +328,10 @@ std::shared_ptr<RtApiEnumerator> RtAudio::GetRtAudioEnumerator(RtAudio::Api api)
 
 std::shared_ptr<RtApiProber> RtAudio::GetRtAudioProber(RtAudio::Api api)
 {
+#if defined(__LINUX_PULSE__)
+    if (api == LINUX_PULSE)
+        return std::make_shared<RtApiPulseProber>();
+#endif
 #if defined(__LINUX_ALSA__)
     if (api == LINUX_ALSA)
         return std::make_shared<RtApiAlsaProber>();

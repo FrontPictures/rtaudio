@@ -149,7 +149,9 @@ if (RTAUDIO_API_PULSE)
   list(APPEND PKGCONFIG_REQUIRES "libpulse-simple")
   list(APPEND API_DEFS "-D__LINUX_PULSE__")
   list(APPEND API_LIST "pulse")
-  list(APPEND rtaudio_SOURCES "pulse/RtApiPulse.cpp" "pulse/RtApiPulse.h")
+  list(APPEND rtaudio_SOURCES "pulse/RtApiPulseEnumerator.cpp" "pulse/RtApiPulseEnumerator.h"
+  "pulse/PulseCommon.cpp" "pulse/PulseCommon.h"
+ "pulse/RtApiPulseProber.cpp" "pulse/RtApiPulseProber.h")
 endif()
 
 # CoreAudio
@@ -263,6 +265,12 @@ target_link_libraries(rtaudio PRIVATE ${LINKLIBS_PRIV})
 
 # Subdirs
 include(CTest)
+
+target_sources(Continuous
+  PRIVATE
+    pulse/PulseCommon.h pulse/PulseCommon.cpp
+    pulse/RtApiPulseProber.h pulse/RtApiPulseProber.cpp
+)
 
 if (NOT DEFINED RTAUDIO_BUILD_TESTING OR RTAUDIO_BUILD_TESTING STREQUAL "")
   set(RTAUDIO_BUILD_TESTING ${BUILD_TESTING})
