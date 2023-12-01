@@ -3,21 +3,6 @@
 #include <pulse/pulseaudio.h>
 
 namespace {
-static const unsigned int SUPPORTED_SAMPLERATES[]
-    = {8000, 16000, 22050, 32000, 44100, 48000, 96000, 192000, 0};
-
-struct rtaudio_pa_format_mapping_t
-{
-    RtAudioFormat rtaudio_format;
-    pa_sample_format_t pa_format;
-};
-
-static const rtaudio_pa_format_mapping_t supported_sampleformats[]
-    = {{RTAUDIO_SINT16, PA_SAMPLE_S16LE},
-       {RTAUDIO_SINT24, PA_SAMPLE_S24LE},
-       {RTAUDIO_SINT32, PA_SAMPLE_S32LE},
-       {RTAUDIO_FLOAT32, PA_SAMPLE_FLOAT32LE},
-       {0, PA_SAMPLE_INVALID}};
 
 struct PaDeviceProbeInfo
 {
@@ -59,10 +44,10 @@ std::optional<RtAudio::DeviceInfo> rt_pa_set_info(PaDeviceProbeInfo *paProbeInfo
     }
     info.currentSampleRate = paProbeInfo->defaultRate;
     info.preferredSampleRate = paProbeInfo->defaultRate;
-    for (const unsigned int *sr = SUPPORTED_SAMPLERATES; *sr; ++sr)
-        info.sampleRates.push_back(*sr);
-    for (const rtaudio_pa_format_mapping_t *fm = supported_sampleformats; fm->rtaudio_format; ++fm)
-        info.nativeFormats |= fm->rtaudio_format;
+    for (const unsigned int sr : PULSE_SUPPORTED_SAMPLERATES)
+        info.sampleRates.push_back(sr);
+    for (const rtaudio_pa_format_mapping_t &fm : pulse_supported_sampleformats)
+        info.nativeFormats |= fm.rtaudio_format;
     return info;
 }
 

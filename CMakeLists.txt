@@ -97,7 +97,7 @@ file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/configure.ac" CONFIGAC
 string(REGEX REPLACE "${R}" "\\1" PACKAGE_VERSION "${CONFIGAC}")
 
 # Init variables
-set(rtaudio_SOURCES RtAudio.cpp RtAudio.h utils.cpp utils.h)
+set(rtaudio_SOURCES RtAudio.cpp RtAudio.h utils.cpp utils.h ThreadSuspendable.h ThreadSuspendable.cpp)
 set(LINKLIBS)
 set(PKGCONFIG_REQUIRES)
 set(LIBS_REQUIRES)
@@ -151,7 +151,9 @@ if (RTAUDIO_API_PULSE)
   list(APPEND API_LIST "pulse")
   list(APPEND rtaudio_SOURCES "pulse/RtApiPulseEnumerator.cpp" "pulse/RtApiPulseEnumerator.h"
   "pulse/PulseCommon.cpp" "pulse/PulseCommon.h"
- "pulse/RtApiPulseProber.cpp" "pulse/RtApiPulseProber.h")
+  "pulse/RtApiPulseProber.cpp" "pulse/RtApiPulseProber.h"
+  "pulse/RtApiPulseStreamFactory.cpp" "pulse/RtApiPulseStreamFactory.h"
+  "pulse/RtApiPulseStream.cpp" "pulse/RtApiPulseStream.h")
 endif()
 
 # CoreAudio
@@ -265,12 +267,6 @@ target_link_libraries(rtaudio PRIVATE ${LINKLIBS_PRIV})
 
 # Subdirs
 include(CTest)
-
-target_sources(Continuous
-  PRIVATE
-    pulse/PulseCommon.h pulse/PulseCommon.cpp
-    pulse/RtApiPulseProber.h pulse/RtApiPulseProber.cpp
-)
 
 if (NOT DEFINED RTAUDIO_BUILD_TESTING OR RTAUDIO_BUILD_TESTING STREQUAL "")
   set(RTAUDIO_BUILD_TESTING ${BUILD_TESTING})

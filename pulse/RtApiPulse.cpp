@@ -394,8 +394,8 @@ bool RtApiPulse::probeDeviceOpen( unsigned int deviceId, StreamMode mode,
     }
 
     if ( options && !options->streamName.empty() ) streamName = options->streamName;
-    switch ( mode ) {
-    pa_buffer_attr buffer_attr;
+    switch (mode) {
+        pa_buffer_attr buffer_attr;
     case INPUT:
         buffer_attr.fragsize = bufferBytes;
         if ( options && options->numberOfBuffers > 0 )

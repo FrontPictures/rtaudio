@@ -134,7 +134,7 @@ int main(int argc, char* argv[])
     std::cout << "Devices:" << std::endl;
     std::optional<RtAudio::DeviceInfoPartial> selectedDevice;
     for (auto& d : devices) {
-        bool thisDevice = d.name == params.getParamValue("device", argv, argc);
+        bool thisDevice = d.name == params.getParamValue("device", argv, argc) && d.supportsOutput;
         if (thisDevice) {
             std::cout << "*";
         }
