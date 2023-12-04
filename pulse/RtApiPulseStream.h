@@ -1,5 +1,6 @@
 #pragma once
 #include "RtAudio.h"
+#include "ThreadSuspendable.h"
 #include "pulse/pulseaudio.h"
 #include <pulse/simple.h>
 
@@ -13,5 +14,8 @@ public:
     RtAudioErrorType stopStream(void) override;
 
 private:
+    RtAudioErrorType stopStreamPriv(void);
+    bool processAudio();
+    ThreadSuspendable mThread;
     pa_simple *mHandle = nullptr;
 };

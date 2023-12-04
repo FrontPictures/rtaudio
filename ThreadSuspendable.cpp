@@ -63,32 +63,35 @@ void ThreadSuspendable::threadMethod()
 {
     bool lastProcessResult = true;
     while (true) {
-        std::unique_lock g(mMutex);
-        if (lastProcessResult == false) {
-            mState = State::STOPPING;
-        }
+        {
+            std::unique_lock g(mMutex);
+            if (lastProcessResult == false) {
+                mState = State::STOPPING;
+            }
 
-        while (mState != State::RUNNING) {
-            switch (mState) {
-            case State::SUSPENDED:
-                mCV.wait(g);
-                break;
-            case State::RESUMING:
-                mState = State::RUNNING;
-                mCV.notify_one();
-                break;
-            case State::SUSPENDING:
-                mState = State::SUSPENDED;
-                mCV.notify_one();
-            case State::STOPPING:
-                mState = State::STOPPED;
-                mCV.notify_one();
-                return;
-            case State::RUNNING:
-            case State::STOPPED:
-            default:
-                assert(false);
-                return;
+            while (mState != State::RUNNING) {
+                switch (mState) {
+                case State::SUSPENDED:
+                    mCV.wait(g);
+                    break;
+                case State::RESUMING:
+                    mState = State::RUNNING;
+                    mCV.notify_one();
+                    break;
+                case State::SUSPENDING:
+                    mState = State::SUSPENDED;
+                    mCV.notify_one();
+                    break;
+                case State::STOPPING:
+                    mState = State::STOPPED;
+                    mCV.notify_one();
+                    return;
+                case State::RUNNING:
+                case State::STOPPED:
+                default:
+                    assert(false);
+                    return;
+                }
             }
         }
         lastProcessResult = mProcess();

@@ -3,14 +3,19 @@
 #include <chrono>
 #include <cstdio>
 
+int index = 5;
+
 bool task(int *index)
 {
-    int id = *index;
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
     printf("Task %d\n", *index);
-    id = (*index);
-    (*index) = id;
+    (*index)++;
+    if (*index > 15) {
+        return false;
+    }
+    return true;
 }
+
 int main()
 {
     int index = 0;
@@ -18,9 +23,6 @@ int main()
     ThreadSuspendable thread([index_ptr]() { return task(index_ptr); });
     assert(thread.isValid());
     printf("Thread created\n");
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-
     printf("Thread resuming\n");
     thread.resume(true);
     printf("Thread resumed\n");
@@ -32,7 +34,7 @@ int main()
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     printf("Thread resuming\n");
-    thread.resume();
+    thread.resume(true);
     printf("Thread resumed\n");
     std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     printf("Thread suspending\n");

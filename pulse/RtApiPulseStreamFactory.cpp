@@ -1,5 +1,6 @@
 #include "RtApiPulseStreamFactory.h"
 #include "PulseCommon.h"
+#include "RtApiPulseStream.h"
 #include <pulse/pulseaudio.h>
 #include <pulse/simple.h>
 
@@ -87,7 +88,7 @@ std::shared_ptr<RtApiStreamClass> RtApiPulseStreamFactory::createStream(CreateSt
         return {};
     }
 
-    return {};
+    return std::make_shared<RtApiPulseStream>(stream_, s_play_ptr);
 }
 
 pa_simple *RtApiPulseStreamFactory::createPASimpleHandle(RtApi::StreamMode mode,
