@@ -43,6 +43,10 @@ int main(int argc, char* argv[]) {
         auto systemCallbacks = RtAudio::GetRtAudioSystemCallback(api, [](const std::string& busId, RtAudioDeviceParam param) {
             std::cout << DeviceParamToString(param) << " : " << busId << std::endl;
             });
+        if (!systemCallbacks) {
+            std::cout << "No audio system events" << std::endl;
+            return 1;
+        }
         std::this_thread::sleep_for(std::chrono::seconds(durationSecs));
     }
     std::cout << "\nFinished receiving events\n";

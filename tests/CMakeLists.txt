@@ -19,6 +19,3 @@ target_link_libraries(audioprobe ${LIBRTAUDIO} ${LINKLIBS})
 
 add_executable(audioevents audioevents.cpp)
 target_link_libraries(audioevents ${LIBRTAUDIO} ${LINKLIBS})
-
-add_executable(threadtest threadtest.cpp)
-target_link_libraries(threadtest ${LIBRTAUDIO} ${LINKLIBS})
