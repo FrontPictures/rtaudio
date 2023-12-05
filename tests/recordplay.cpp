@@ -96,14 +96,14 @@ bool capture_audio(AudioParamsCapture params) {
     for (int t = 0; t < params.retries; t++) {
         CreateStreamParams streamParams;
         streamParams.busId = params.busID;
-        streamParams.mode = RtApi::OUTPUT;
+        streamParams.mode = RtApi::INPUT;
         streamParams.channelsInput = params.channels;
         streamParams.channelsOutput = 0;
         streamParams.sampleRate = params.samplerate;
         streamParams.format = FORMAT;
         streamParams.bufferSize = params.bufferFrames;
         streamParams.callback = captureAudioCallback;
-        streamParams.userData = &params.userData;
+        streamParams.userData = params.userData;
         streamParams.options = &options;
 
         auto stream = factory->createStream(streamParams);
@@ -138,14 +138,14 @@ bool playback_audio(AudioParamsCapture params, std::atomic_bool* stop_flag) {
     }
     CreateStreamParams streamParams;
     streamParams.busId = params.busID;
-    streamParams.mode = RtApi::INPUT;
+    streamParams.mode = RtApi::OUTPUT;
     streamParams.channelsInput = 0;
     streamParams.channelsOutput = params.channels;
     streamParams.sampleRate = params.samplerate;
     streamParams.format = FORMAT;
     streamParams.bufferSize = params.bufferFrames;
     streamParams.callback = playbackAudioCallback;
-    streamParams.userData = &params.userData;
+    streamParams.userData = params.userData;
     streamParams.options = &options;
 
     auto stream = factory->createStream(streamParams);
@@ -161,11 +161,7 @@ bool playback_audio(AudioParamsCapture params, std::atomic_bool* stop_flag) {
     return true;
 }
 
-int main(int argc, char* argv[]) {
-    int ss = sizeof(unsigned long);
-    ss = sizeof(unsigned short);
-    auto res = atoi("0x11");
-    return res;
+int main(int argc, char* argv[]) {    
     CLIParams params({
         {"api", "name of audio API", false},
         {"device_in", "input device busID to use", false},
@@ -210,8 +206,10 @@ int main(int argc, char* argv[]) {
     std::optional<RtAudio::DeviceInfo> selectedDeviceIn{};
     std::optional<RtAudio::DeviceInfo> selectedDeviceOut{};
     for (auto& d : devices) {
-        bool thisDeviceIn = d.name == params.getParamValue("device_in", argv, argc);
-        bool thisDeviceOut = d.name == params.getParamValue("device_out", argv, argc);
+        bool thisDeviceIn = (d.supportsInput
+                             && d.name == params.getParamValue("device_in", argv, argc));
+        bool thisDeviceOut = (d.supportsOutput
+                              && d.name == params.getParamValue("device_out", argv, argc));
         bool nod = false;
 
         RtAudio::DeviceInfo info{};
@@ -237,7 +235,14 @@ int main(int argc, char* argv[]) {
         if (!nod) {
             std::cout << "  ";
         }
-        std::cout << d.name << std::endl;
+        std::cout << d.name;
+        std::cout << " (";
+        if (d.supportsInput) {
+            std::cout << "i";
+        } else if (d.supportsOutput) {
+            std::cout << "o";
+        }
+        std::cout << ")" << std::endl;
     }
     std::cout << std::endl;
     if (!selectedDeviceIn || !selectedDeviceOut) {

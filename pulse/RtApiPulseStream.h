@@ -15,6 +15,8 @@ public:
 
 private:
     RtAudioErrorType stopStreamPriv(void);
+    bool processOutput();
+    bool processInput();
     bool processAudio();
     ThreadSuspendable mThread;
     pa_simple *mHandle = nullptr;

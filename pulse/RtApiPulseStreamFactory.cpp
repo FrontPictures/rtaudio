@@ -31,6 +31,9 @@ std::shared_ptr<RtApiStreamClass> RtApiPulseStreamFactory::createStream(CreateSt
     } else {
         ss.channels = params.channelsInput;
     }
+    if (ss.channels == 0) {
+        return {};
+    }
     if (isSamplerateSupported(params.sampleRate) == false) {
         return {};
     }
