@@ -165,7 +165,9 @@ if (RTAUDIO_API_CORE)
   list(APPEND LIBS_REQUIRES "-framework CoreAudio -framework CoreFoundation")
   list(APPEND API_DEFS "-D__MACOSX_CORE__")
   list(APPEND API_LIST "core")
-  list(APPEND rtaudio_SOURCES "core/RtApiCore.cpp" "core/RtApiCore.h")
+  list(APPEND rtaudio_SOURCES "core/RtApiCoreEnumerator.cpp" "core/RtApiCoreEnumerator.h"
+  "core/RtApiCoreProber.cpp" "core/RtApiCoreProber.h"
+  "core/CoreCommon.cpp" "core/CoreCommon.h")
 endif()
 
 # ASIO

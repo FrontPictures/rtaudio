@@ -66,7 +66,8 @@ const unsigned int RtAudio::SAMPLE_RATES[] = {
 
 #if defined(__MACOSX_CORE__)
 
-#include "core/RtApiCore.h"
+#include "core/RtApiCoreEnumerator.h"
+#include "core/RtApiCoreProber.h"
 
 #endif
 
@@ -319,7 +320,7 @@ std::shared_ptr<RtApiEnumerator> RtAudio::GetRtAudioEnumerator(RtAudio::Api api)
 #endif
 #if defined(__MACOSX_CORE__)
     if (api == MACOSX_CORE)
-        rtapi_ = new RtApiCore();
+        return std::make_shared<RtApiCoreEnumerator>();
 #endif
 #if defined(__RTAUDIO_DUMMY__)
     if (api == RTAUDIO_DUMMY)
@@ -330,6 +331,10 @@ std::shared_ptr<RtApiEnumerator> RtAudio::GetRtAudioEnumerator(RtAudio::Api api)
 
 std::shared_ptr<RtApiProber> RtAudio::GetRtAudioProber(RtAudio::Api api)
 {
+#if defined(__MACOSX_CORE__)
+    if (api == MACOSX_CORE)
+        return std::make_shared<RtApiCoreProber>();
+#endif
 #if defined(__LINUX_PULSE__)
     if (api == LINUX_PULSE)
         return std::make_shared<RtApiPulseProber>();
