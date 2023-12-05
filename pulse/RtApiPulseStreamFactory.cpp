@@ -65,6 +65,11 @@ std::shared_ptr<RtApiStreamClass> RtApiPulseStreamFactory::createStream(CreateSt
     stream_.latency[params.mode] = 0;
     stream_.nBuffers = bufferNumbers;
 
+    if (params.options && params.options->flags & RTAUDIO_SCHEDULE_REALTIME) {
+        stream_.callbackInfo.priority = params.options->priority;
+        stream_.callbackInfo.doRealtime = true;
+    }
+
     if (setupStreamWithParams(stream_, params) == false) {
         return {};
     }

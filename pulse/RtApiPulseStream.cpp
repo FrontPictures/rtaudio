@@ -1,7 +1,9 @@
 #include "RtApiPulseStream.h"
 
 RtApiPulseStream::RtApiPulseStream(RtApi::RtApiStream stream, pa_simple *handle)
-    : mThread(std::bind(&RtApiPulseStream::processAudio, this))
+    : mThread(std::bind(&RtApiPulseStream::processAudio, this),
+              stream.callbackInfo.doRealtime,
+              stream.callbackInfo.priority)
     , RtApiStreamClass(stream)
     , mHandle(handle)
 {}

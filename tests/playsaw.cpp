@@ -9,12 +9,13 @@
 /******************************************/
 
 #include "RtAudio.h"
-#include <iostream>
-#include <cstdlib>
-#include <signal.h>
-#include <chrono>
-#include "cliutils.h"
 #include "audioutils.h"
+#include "cliutils.h"
+#include <chrono>
+#include <climits>
+#include <cstdlib>
+#include <iostream>
+#include <signal.h>
 #include <thread>
 
 RtAudioFormat GetRtFormatFromString(const std::string& format_str) {
@@ -219,6 +220,7 @@ int main(int argc, char* argv[])
 
     RtAudio::StreamOptions options{};
     options.flags |= RTAUDIO_SCHEDULE_REALTIME;
+    options.priority = INT_MAX;
     if (hog) {
         options.flags |= RTAUDIO_HOG_DEVICE;
     }
