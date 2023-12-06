@@ -68,6 +68,7 @@ const unsigned int RtAudio::SAMPLE_RATES[] = {
 
 #include "core/RtApiCoreEnumerator.h"
 #include "core/RtApiCoreProber.h"
+#include "core/RtApiCoreStreamFactory.h"
 
 #endif
 
@@ -356,6 +357,10 @@ std::shared_ptr<RtApiProber> RtAudio::GetRtAudioProber(RtAudio::Api api)
 
 std::shared_ptr<RtApiStreamClassFactory> RtAudio::GetRtAudioStreamFactory(RtAudio::Api api)
 {
+#if defined(__MACOSX_CORE__)
+    if (api == MACOSX_CORE)
+        return std::make_shared<RtApiCoreStreamFactory>();
+#endif
 #if defined(__LINUX_PULSE__)
     if (api == LINUX_PULSE)
         return std::make_shared<RtApiPulseStreamFactory>();

@@ -167,7 +167,8 @@ if (RTAUDIO_API_CORE)
   list(APPEND API_LIST "core")
   list(APPEND rtaudio_SOURCES "core/RtApiCoreEnumerator.cpp" "core/RtApiCoreEnumerator.h"
   "core/RtApiCoreProber.cpp" "core/RtApiCoreProber.h"
-  "core/CoreCommon.cpp" "core/CoreCommon.h")
+  "core/CoreCommon.cpp" "core/CoreCommon.h"
+  "core/RtApiCoreStreamFactory.cpp" "core/RtApiCoreStreamFactory.h")
 endif()
 
 # ASIO

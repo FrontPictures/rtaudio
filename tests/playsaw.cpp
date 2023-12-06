@@ -242,7 +242,7 @@ int main(int argc, char* argv[])
             auto stream = factory->createStream(params);
             if (!stream) {
                 std::cout << "\nFailed to create stream!\n";
-                SLEEP(0);
+                SLEEP(1000);
                 continue;
             }
             std::cout << "\nStream created! Buffer size: " << stream->getBufferSize() << "\n";

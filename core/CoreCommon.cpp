@@ -1,12 +1,6 @@
 #include "CoreCommon.h"
 #include "RtAudio.h"
 
-#if defined(MAC_OS_VERSION_12_0) && (MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_VERSION_12_0)
-#define KAUDIOOBJECTPROPERTYELEMENT kAudioObjectPropertyElementMain
-#else
-#define KAUDIOOBJECTPROPERTYELEMENT kAudioObjectPropertyElementMaster // deprecated with macOS 12
-#endif
-
 namespace CoreCommon {
 
 unsigned int getDeviceChannels(AudioDeviceID id, AudioObjectPropertyScope scope)
@@ -199,6 +193,227 @@ std::optional<std::string> getDeviceFriendlyName(AudioDeviceID id)
         return {};
     }
     return manufacture_opt.value() + ": " + devName_opt.value();
+}
+
+bool coreAudioHog(AudioDeviceID id, AudioObjectPropertyScope scope)
+{
+    pid_t hog_pid = 0;
+    UInt32 dataSize = sizeof(hog_pid);
+    OSStatus result = 0;
+
+    AudioObjectPropertyAddress property = {kAudioDevicePropertyHogMode,
+                                           scope,
+                                           KAUDIOOBJECTPROPERTYELEMENT};
+
+    result = AudioObjectGetPropertyData(id, &property, 0, NULL, &dataSize, &hog_pid);
+    if (result != noErr) {
+        return false;
+    }
+
+    if (hog_pid != getpid()) {
+        hog_pid = getpid();
+        result = AudioObjectSetPropertyData(id, &property, 0, NULL, dataSize, &hog_pid);
+        if (result != noErr) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool setDeviceSamplerate(AudioDeviceID id, AudioObjectPropertyScope scope, unsigned int samplerate)
+{
+    UInt32 dataSize = sizeof(Float64);
+    OSStatus result = 0;
+
+    AudioObjectPropertyAddress property = {kAudioDevicePropertyNominalSampleRate,
+                                           scope,
+                                           KAUDIOOBJECTPROPERTYELEMENT};
+
+    Float64 nominalRate = samplerate;
+    result = AudioObjectSetPropertyData(id, &property, 0, NULL, dataSize, &nominalRate);
+    if (result != noErr) {
+        return false;
+    }
+    return true;
+}
+
+bool waitDeviceSamplerate(AudioDeviceID id,
+                          AudioObjectPropertyScope scope,
+                          unsigned int samplerate,
+                          unsigned int timeout_ms)
+{
+    UInt32 dataSize = sizeof(Float64);
+    OSStatus result = 0;
+    constexpr int sleepMicrosecs = 5000;
+
+    AudioObjectPropertyAddress property = {kAudioDevicePropertyNominalSampleRate,
+                                           scope,
+                                           KAUDIOOBJECTPROPERTYELEMENT};
+
+    UInt32 microCounter = 0;
+    Float64 reportedRate = 0.0;
+    Float64 nominalRate = samplerate;
+    while (std::fabs(reportedRate - nominalRate) > 1) {
+        microCounter += sleepMicrosecs;
+        if (microCounter > timeout_ms * 1000)
+            return false;
+        usleep(sleepMicrosecs);
+        result = AudioObjectGetPropertyData(id, &property, 0, NULL, &dataSize, &reportedRate);
+        if (result != noErr) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::optional<AudioValueRange> getDeviceBufferSizeRange(AudioDeviceID id,
+                                                        AudioObjectPropertyScope scope)
+{
+    UInt32 dataSize = sizeof(AudioValueRange);
+    OSStatus result = 0;
+
+    AudioObjectPropertyAddress property = {kAudioDevicePropertyBufferFrameSizeRange,
+                                           scope,
+                                           KAUDIOOBJECTPROPERTYELEMENT};
+    AudioValueRange bufferRange{};
+    result = AudioObjectGetPropertyData(id, &property, 0, NULL, &dataSize, &bufferRange);
+
+    if (result != noErr) {
+        return {};
+    }
+    return bufferRange;
+}
+
+bool setDeviceBufferSize(AudioDeviceID id, AudioObjectPropertyScope scope, unsigned int bufferSize)
+{
+    UInt32 dataSize = sizeof(UInt32);
+    OSStatus result = 0;
+    AudioObjectPropertyAddress property = {kAudioDevicePropertyBufferFrameSize,
+                                           scope,
+                                           KAUDIOOBJECTPROPERTYELEMENT};
+    // Set the buffer size.  For multiple streams, I'm assuming we only
+    // need to make this setting for the master channel.
+    UInt32 theSize = (UInt32) bufferSize;
+    result = AudioObjectSetPropertyData(id, &property, 0, NULL, dataSize, &theSize);
+    if (result != noErr) {
+        return false;
+    }
+    return true;
+}
+
+std::optional<AudioStreamBasicDescription> getStreamDescription(AudioDeviceID id,
+                                                                AudioObjectPropertyScope scope,
+                                                                AudioObjectPropertySelector selector)
+{
+    UInt32 dataSize = sizeof(AudioStreamBasicDescription);
+    OSStatus result = 0;
+    AudioObjectPropertyAddress property = {selector, scope, KAUDIOOBJECTPROPERTYELEMENT};
+    AudioStreamBasicDescription description{};
+    result = AudioObjectGetPropertyData(id, &property, 0, NULL, &dataSize, &description);
+    if (result != noErr) {
+        return {};
+    }
+    return description;
+}
+std::optional<AudioStreamBasicDescription> getVirtualStreamDescription(
+    AudioDeviceID id, AudioObjectPropertyScope scope)
+{
+    return getStreamDescription(id, scope, kAudioStreamPropertyVirtualFormat);
+}
+
+std::optional<AudioStreamBasicDescription> getPhysicalStreamDescription(
+    AudioDeviceID id, AudioObjectPropertyScope scope)
+{
+    return getStreamDescription(id, scope, kAudioStreamPropertyPhysicalFormat);
+}
+
+bool setStreamDescription(AudioDeviceID id,
+                          AudioObjectPropertyScope scope,
+                          AudioObjectPropertySelector selector,
+                          AudioStreamBasicDescription description)
+{
+    UInt32 dataSize = sizeof(AudioStreamBasicDescription);
+    OSStatus result = 0;
+    AudioObjectPropertyAddress property = {selector, scope, KAUDIOOBJECTPROPERTYELEMENT};
+    result = AudioObjectSetPropertyData(id, &property, 0, NULL, dataSize, &description);
+    if (result != noErr) {
+        return false;
+    }
+    return true;
+}
+
+bool setVirtualStreamDescription(AudioDeviceID id,
+                                 AudioObjectPropertyScope scope,
+                                 AudioStreamBasicDescription description)
+{
+    return setStreamDescription(id, scope, kAudioStreamPropertyVirtualFormat, description);
+}
+
+bool setPhyisicalStreamDescription(AudioDeviceID id,
+                                   AudioObjectPropertyScope scope,
+                                   AudioStreamBasicDescription desc)
+{
+    return setStreamDescription(id, scope, kAudioStreamPropertyPhysicalFormat, desc);
+}
+
+std::optional<unsigned int> getDeviceLatency(AudioDeviceID id, AudioObjectPropertyScope scope)
+{
+    UInt32 dataSize = sizeof(UInt32);
+    OSStatus result = 0;
+    AudioObjectPropertyAddress property = {kAudioDevicePropertyLatency,
+                                           scope,
+                                           KAUDIOOBJECTPROPERTYELEMENT};
+
+    if (AudioObjectHasProperty(id, &property) == false) {
+        return {};
+    }
+    UInt32 latency = 0;
+    result = AudioObjectGetPropertyData(id, &property, 0, NULL, &dataSize, &latency);
+    if (result != kAudioHardwareNoError) {
+        return {};
+    }
+    return latency;
+}
+
+const char *getErrorCode(OSStatus code)
+{
+    switch (code) {
+    case kAudioHardwareNotRunningError:
+        return "kAudioHardwareNotRunningError";
+
+    case kAudioHardwareUnspecifiedError:
+        return "kAudioHardwareUnspecifiedError";
+
+    case kAudioHardwareUnknownPropertyError:
+        return "kAudioHardwareUnknownPropertyError";
+
+    case kAudioHardwareBadPropertySizeError:
+        return "kAudioHardwareBadPropertySizeError";
+
+    case kAudioHardwareIllegalOperationError:
+        return "kAudioHardwareIllegalOperationError";
+
+    case kAudioHardwareBadObjectError:
+        return "kAudioHardwareBadObjectError";
+
+    case kAudioHardwareBadDeviceError:
+        return "kAudioHardwareBadDeviceError";
+
+    case kAudioHardwareBadStreamError:
+        return "kAudioHardwareBadStreamError";
+
+    case kAudioHardwareUnsupportedOperationError:
+        return "kAudioHardwareUnsupportedOperationError";
+
+    case kAudioDeviceUnsupportedFormatError:
+        return "kAudioDeviceUnsupportedFormatError";
+
+    case kAudioDevicePermissionsError:
+        return "kAudioDevicePermissionsError";
+
+    default:
+        return "CoreAudio unknown error";
+    }
 }
 
 } // namespace CoreCommon
