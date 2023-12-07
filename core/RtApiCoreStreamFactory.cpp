@@ -143,7 +143,82 @@ std::shared_ptr<RtApiStreamClass> RtApiCoreStreamFactory::createStream(CreateStr
         return {};
     }
     deviceId = dev_opt.value();
-    AudioObjectPropertyScope scope = kAudioDevicePropertyScopeOutput;
+
+    deviceChannelsOutput = CoreCommon::getOutputChannels(deviceId);
+    deviceChannelsInput = CoreCommon::getInputChannels(deviceId);
+    if (deviceChannelsOutput == 0 && deviceChannelsInput == 0) {
+        error(RTAUDIO_SYSTEM_ERROR, "RtApiCore::probeDevices: no device channels.");
+        return {};
+    }
+
+    std::optional<ScopeStreamStruct> outputContext;
+    std::optional<ScopeStreamStruct> inputContext;
+
+    if (params.mode == RtApi::INPUT || params.mode == RtApi::DUPLEX) {
+        inputContext = setupStreamScope(params, kAudioDevicePropertyScopeInput, deviceId);
+        if (!inputContext) {
+            error(RTAUDIO_SYSTEM_ERROR, "RtApiCore::probeDevices: failed to setup input context.");
+            return {};
+        }
+    }
+    if (params.mode == RtApi::OUTPUT || params.mode == RtApi::DUPLEX) {
+        outputContext = setupStreamScope(params, kAudioDevicePropertyScopeOutput, deviceId);
+        if (!outputContext) {
+            error(RTAUDIO_SYSTEM_ERROR, "RtApiCore::probeDevices: failed to setup input context.");
+            return {};
+        }
+    }
+
+    if (params.mode == RtApi::DUPLEX) {
+        if (outputContext->bufferSize != inputContext->bufferSize) {
+            error(RTAUDIO_SYSTEM_ERROR,
+                  "RtApiCore::probeDevices: duplex mode buffer size mismatch.");
+            return {};
+        }
+    }
+
+    RtApi::RtApiStream stream_{};
+    stream_.nDeviceChannels[RtApi::INPUT] = deviceChannelsInput;
+    stream_.nDeviceChannels[RtApi::OUTPUT] = deviceChannelsOutput;
+
+    stream_.deviceFormat[RtApi::INPUT] = RTAUDIO_FLOAT32;
+    stream_.deviceFormat[RtApi::OUTPUT] = RTAUDIO_FLOAT32;
+
+    // Byte-swapping: According to AudioHardware.h, the stream data will
+    // always be presented in native-endian format, so we should never
+    // need to byte swap.
+    stream_.doByteSwap[RtApi::INPUT] = false;
+    stream_.doByteSwap[RtApi::OUTPUT] = false;
+
+    stream_.deviceInterleaved[RtApi::INPUT] = true;
+    stream_.deviceInterleaved[RtApi::OUTPUT] = true;
+
+    stream_.latency[RtApi::INPUT] = inputContext ? inputContext->latency : 0;
+    stream_.latency[RtApi::OUTPUT] = outputContext ? outputContext->latency : 0;
+
+    stream_.nBuffers = 1;
+
+    if (setupStreamWithParams(stream_, params) == false) {
+        return {};
+    }
+    if (setupStreamCommon(stream_) == false) {
+        return {};
+    }
+
+    std::shared_ptr<RtApiCoreStream> coreStream = std::make_shared<RtApiCoreStream>(std::move(
+                                                                                        stream_),
+                                                                                    deviceId);
+    if (coreStream->isValid() == false) {
+        return {};
+    }
+    return coreStream;
+}
+
+std::optional<RtApiCoreStreamFactory::ScopeStreamStruct> RtApiCoreStreamFactory::setupStreamScope(
+    const CreateStreamParams &params, AudioObjectPropertyScope scope, AudioDeviceID deviceId)
+{
+    unsigned int bufferSize = params.bufferSize;
+    unsigned int latency = 0;
 
     if (params.options && params.options->flags & RTAUDIO_HOG_DEVICE) {
         if (CoreCommon::coreAudioHog(deviceId, scope)) {
@@ -151,9 +226,6 @@ std::shared_ptr<RtApiStreamClass> RtApiCoreStreamFactory::createStream(CreateStr
             return {};
         }
     }
-
-    deviceChannelsOutput = CoreCommon::getOutputChannels(deviceId);
-    deviceChannelsInput = CoreCommon::getInputChannels(deviceId);
 
     auto nominalRate_opt = CoreCommon::getCurrentSamplerate(deviceId, scope);
     if (!nominalRate_opt) {
@@ -176,12 +248,12 @@ std::shared_ptr<RtApiStreamClass> RtApiCoreStreamFactory::createStream(CreateStr
         error(RTAUDIO_SYSTEM_ERROR, "RtApiCore::probeDevices: error get buffer range.");
         return {};
     }
-    params.bufferSize = std::fmax(params.bufferSize, bufferRange_opt->mMinimum);
-    params.bufferSize = std::fminf(params.bufferSize, bufferRange_opt->mMaximum);
+    bufferSize = std::fmax(params.bufferSize, bufferRange_opt->mMinimum);
+    bufferSize = std::fminf(params.bufferSize, bufferRange_opt->mMaximum);
     if (params.options && params.options->flags & RTAUDIO_MINIMIZE_LATENCY)
-        params.bufferSize = (unsigned int) bufferRange_opt->mMinimum;
+        bufferSize = (unsigned int) bufferRange_opt->mMinimum;
 
-    if (CoreCommon::setDeviceBufferSize(deviceId, scope, params.bufferSize) == false) {
+    if (CoreCommon::setDeviceBufferSize(deviceId, scope, bufferSize) == false) {
         errorStream_
             << "RtApiCore::probeDeviceOpen: system error setting the buffer size for device ("
             << deviceId << ").";
@@ -227,40 +299,12 @@ std::shared_ptr<RtApiStreamClass> RtApiCoreStreamFactory::createStream(CreateStr
     }
 
     auto latency_opt = CoreCommon::getDeviceLatency(deviceId, scope);
-
-    RtApi::RtApiStream stream_{};
-    stream_.nDeviceChannels[RtApi::INPUT] = deviceChannelsInput;
-    stream_.nDeviceChannels[RtApi::OUTPUT] = deviceChannelsOutput;
-
-    stream_.deviceFormat[RtApi::INPUT] = RTAUDIO_FLOAT32;
-    stream_.deviceFormat[RtApi::OUTPUT] = RTAUDIO_FLOAT32;
-
-    // Byte-swapping: According to AudioHardware.h, the stream data will
-    // always be presented in native-endian format, so we should never
-    // need to byte swap.
-    stream_.doByteSwap[RtApi::INPUT] = false;
-    stream_.doByteSwap[RtApi::OUTPUT] = false;
-
-    stream_.deviceInterleaved[RtApi::INPUT] = true;
-    stream_.deviceInterleaved[RtApi::OUTPUT] = true;
-
-    stream_.latency[RtApi::INPUT] = latency_opt ? latency_opt.value() : 0;
-    stream_.latency[RtApi::OUTPUT] = latency_opt ? latency_opt.value() : 0;
-
-    stream_.nBuffers = 1;
-
-    if (setupStreamWithParams(stream_, params) == false) {
-        return {};
-    }
-    if (setupStreamCommon(stream_) == false) {
-        return {};
+    if (latency_opt) {
+        latency = latency_opt.value();
     }
 
-    std::shared_ptr<RtApiCoreStream> coreStream = std::make_shared<RtApiCoreStream>(std::move(
-                                                                                        stream_),
-                                                                                    deviceId);
-    if (coreStream->isValid() == false) {
-        return {};
-    }
-    return coreStream;
+    ScopeStreamStruct scopeResult{};
+    scopeResult.bufferSize = bufferSize;
+    scopeResult.latency = latency;
+    return scopeResult;
 }

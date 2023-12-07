@@ -187,12 +187,10 @@ std::optional<AudioDeviceID> getDeviceByBusID(const std::string &busID)
 std::optional<std::string> getDeviceFriendlyName(AudioDeviceID id)
 {
     auto devName_opt = CoreCommon::getDeviceName(id);
-    auto manufacture_opt = CoreCommon::getManufacturerName(id);
-
-    if (!devName_opt || !manufacture_opt) {
+    if (!devName_opt) {
         return {};
     }
-    return manufacture_opt.value() + ": " + devName_opt.value();
+    return devName_opt.value();
 }
 
 bool coreAudioHog(AudioDeviceID id, AudioObjectPropertyScope scope)
