@@ -235,6 +235,9 @@ std::shared_ptr<RtApiStreamClass> RtApiCoreStreamFactory::createStream(CreateStr
     stream_.deviceFormat[RtApi::INPUT] = RTAUDIO_FLOAT32;
     stream_.deviceFormat[RtApi::OUTPUT] = RTAUDIO_FLOAT32;
 
+    // Byte-swapping: According to AudioHardware.h, the stream data will
+    // always be presented in native-endian format, so we should never
+    // need to byte swap.
     stream_.doByteSwap[RtApi::INPUT] = false;
     stream_.doByteSwap[RtApi::OUTPUT] = false;
 
@@ -253,5 +256,11 @@ std::shared_ptr<RtApiStreamClass> RtApiCoreStreamFactory::createStream(CreateStr
         return {};
     }
 
-    return std::make_shared<RtApiCoreStream>(std::move(stream_), deviceId);
+    std::shared_ptr<RtApiCoreStream> coreStream = std::make_shared<RtApiCoreStream>(std::move(
+                                                                                        stream_),
+                                                                                    deviceId);
+    if (coreStream->isValid() == false) {
+        return {};
+    }
+    return coreStream;
 }

@@ -416,4 +416,66 @@ const char *getErrorCode(OSStatus code)
     }
 }
 
+bool registerListener(AudioDeviceID id,
+                      AudioObjectPropertySelector selector,
+                      AudioObjectPropertyListenerProc listener,
+                      void *userdata)
+{
+    OSStatus result = 0;
+    AudioObjectPropertyAddress property = {selector,
+                                           kAudioObjectPropertyScopeGlobal,
+                                           KAUDIOOBJECTPROPERTYELEMENT};
+
+    result = AudioObjectAddPropertyListener(id, &property, listener, userdata);
+    if (result != noErr) {
+        return false;
+    }
+    return true;
+}
+
+bool unregisterListener(AudioDeviceID id,
+                        AudioObjectPropertySelector selector,
+                        AudioObjectPropertyListenerProc listener,
+                        void *userdata)
+{
+    OSStatus result = 0;
+    AudioObjectPropertyAddress property = {selector,
+                                           kAudioObjectPropertyScopeGlobal,
+                                           KAUDIOOBJECTPROPERTYELEMENT};
+
+    result = AudioObjectRemovePropertyListener(id, &property, listener, userdata);
+    if (result != noErr) {
+        return false;
+    }
+    return true;
+}
+
+bool registerDeviceAliveCallback(AudioDeviceID id,
+                                 AudioObjectPropertyListenerProc listener,
+                                 void *userdata)
+{
+    return registerListener(id, kAudioDevicePropertyDeviceIsAlive, listener, userdata);
+}
+
+bool unregisterDeviceAliveCallback(AudioDeviceID id,
+                                   AudioObjectPropertyListenerProc listener,
+                                   void *userdata)
+{
+    return unregisterListener(id, kAudioDevicePropertyDeviceIsAlive, listener, userdata);
+}
+
+bool registerDeviceOverloadCallback(AudioDeviceID id,
+                                    AudioObjectPropertyListenerProc listener,
+                                    void *userdata)
+{
+    return registerListener(id, kAudioDeviceProcessorOverload, listener, userdata);
+}
+
+bool unregisterDeviceOverloadCallback(AudioDeviceID id,
+                                      AudioObjectPropertyListenerProc listener,
+                                      void *userdata)
+{
+    return unregisterListener(id, kAudioDeviceProcessorOverload, listener, userdata);
+}
+
 } // namespace CoreCommon

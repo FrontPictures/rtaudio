@@ -18,6 +18,41 @@ static OSStatus callbackHandler(AudioDeviceID inDevice,
     else
         return kAudioHardwareNoError;
 }
+
+static OSStatus streamDisconnectListener(AudioObjectID /*id*/,
+                                         UInt32 nAddresses,
+                                         const AudioObjectPropertyAddress properties[],
+                                         void *infoPointer)
+{
+    RtApiCoreStream *object = reinterpret_cast<RtApiCoreStream *>(infoPointer);
+    for (UInt32 i = 0; i < nAddresses; i++) {
+        if (properties[i].mSelector == kAudioDevicePropertyDeviceIsAlive) {
+            object->signalError();
+            return kAudioHardwareUnspecifiedError;
+        }
+    }
+
+    return kAudioHardwareNoError;
+}
+
+static OSStatus xrunListener(AudioObjectID /*inDevice*/,
+                             UInt32 nAddresses,
+                             const AudioObjectPropertyAddress properties[],
+                             void *handlePointer)
+{
+    RtApiCoreStream *object = reinterpret_cast<RtApiCoreStream *>(handlePointer);
+    for (UInt32 i = 0; i < nAddresses; i++) {
+        if (properties[i].mSelector == kAudioDeviceProcessorOverload) {
+            if (properties[i].mScope == kAudioDevicePropertyScopeInput)
+                object->signalXrun(RtApi::INPUT);
+            else
+                object->signalXrun(RtApi::OUTPUT);
+        }
+    }
+
+    return kAudioHardwareNoError;
+}
+
 } // namespace
 
 RtApiCoreStream::RtApiCoreStream(RtApi::RtApiStream stream, AudioDeviceID id)
@@ -37,6 +72,15 @@ RtApiCoreStream::RtApiCoreStream(RtApi::RtApiStream stream, AudioDeviceID id)
         error(RTAUDIO_SYSTEM_ERROR, errorStream_.str());
         return;
     }
+
+    if (CoreCommon::registerDeviceAliveCallback(mDeviceId, streamDisconnectListener, this)
+        == false) {
+        return;
+    }
+    if (CoreCommon::registerDeviceOverloadCallback(mDeviceId, xrunListener, this) == false) {
+        return;
+    }
+    mIsValid = true;
 }
 
 RtApiCoreStream::~RtApiCoreStream()
@@ -44,6 +88,9 @@ RtApiCoreStream::~RtApiCoreStream()
     stopStreamPriv();
     if (mProcId == nullptr)
         return;
+
+    CoreCommon::unregisterDeviceAliveCallback(mDeviceId, streamDisconnectListener, this);
+    CoreCommon::unregisterDeviceOverloadCallback(mDeviceId, xrunListener, this);
 
 #if defined(MAC_OS_X_VERSION_10_5) && (MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_5)
     AudioDeviceDestroyIOProcID(mDeviceId, mProcId);
@@ -54,6 +101,10 @@ RtApiCoreStream::~RtApiCoreStream()
 
 RtAudioErrorType RtApiCoreStream::startStream()
 {
+    std::lock_guard g(mMutex);
+    if (mWasErrorInAudio) {
+        return error(RTAUDIO_WARNING, "RtApiCore::startStream(): was error in audio thread.");
+    }
     if (stream_.state != RtApi::STREAM_STOPPED) {
         if (stream_.state == RtApi::STREAM_RUNNING)
             return error(RTAUDIO_WARNING,
@@ -88,6 +139,11 @@ RtAudioErrorType RtApiCoreStream::stopStream()
     return stopStreamPriv();
 }
 
+bool RtApiCoreStream::isValid() const
+{
+    return mIsValid;
+}
+
 bool RtApiCoreStream::callbackEvent(AudioDeviceID deviceId,
                                     const AudioBufferList *inBufferList,
                                     const AudioBufferList *outBufferList)
@@ -95,6 +151,14 @@ bool RtApiCoreStream::callbackEvent(AudioDeviceID deviceId,
     RtAudioCallback callback = (RtAudioCallback) stream_.callbackInfo.callback;
     double streamTime = getStreamTime();
     RtAudioStreamStatus status = 0;
+
+    if (mXrunOutput.test_and_set() == false) {
+        status |= RTAUDIO_OUTPUT_UNDERFLOW;
+    }
+    if (mXrunInput.test_and_set() == false) {
+        status |= RTAUDIO_INPUT_OVERFLOW;
+    }
+
     unsigned int iStream = 0;
 
     if (stream_.mode == RtApi::INPUT || stream_.mode == RtApi::DUPLEX) {
@@ -137,8 +201,25 @@ bool RtApiCoreStream::callbackEvent(AudioDeviceID deviceId,
     return true;
 }
 
+void RtApiCoreStream::signalError()
+{
+    std::lock_guard g(mMutex);
+    stream_.state = RtApi::STREAM_ERROR;
+    mWasErrorInAudio = true;
+}
+
+void RtApiCoreStream::signalXrun(RtApi::StreamMode mode)
+{
+    if (mode == RtApi::INPUT) {
+        mXrunInput.clear();
+    } else if (mode == RtApi::OUTPUT) {
+        mXrunOutput.clear();
+    }
+}
+
 RtAudioErrorType RtApiCoreStream::stopStreamPriv()
 {
+    std::lock_guard g(mMutex);
     if (stream_.state != RtApi::STREAM_RUNNING && stream_.state != RtApi::STREAM_ERROR) {
         if (stream_.state == RtApi::STREAM_STOPPED)
             return error(RTAUDIO_WARNING, "RtApiCore::stopStream(): the stream is already stopped!");

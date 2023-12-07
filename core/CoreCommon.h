@@ -40,4 +40,18 @@ bool setPhyisicalStreamDescription(AudioDeviceID id,
                                    AudioStreamBasicDescription desc);
 std::optional<unsigned int> getDeviceLatency(AudioDeviceID id, AudioObjectPropertyScope scope);
 const char *getErrorCode(OSStatus code);
+bool registerDeviceAliveCallback(AudioDeviceID id,
+                                 AudioObjectPropertyListenerProc listener,
+                                 void *userdata);
+bool unregisterDeviceAliveCallback(AudioDeviceID id,
+                                   AudioObjectPropertyListenerProc listener,
+                                   void *userdata);
+
+bool registerDeviceOverloadCallback(AudioDeviceID id,
+                                    AudioObjectPropertyListenerProc listener,
+                                    void *userdata);
+
+bool unregisterDeviceOverloadCallback(AudioDeviceID id,
+                                      AudioObjectPropertyListenerProc listener,
+                                      void *userdata);
 } // namespace CoreCommon
