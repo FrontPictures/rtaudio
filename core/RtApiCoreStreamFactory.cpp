@@ -1,5 +1,6 @@
 #include "RtApiCoreStreamFactory.h"
 #include "CoreCommon.h"
+#include "RtApiCoreStream.h"
 
 namespace {
 
@@ -252,5 +253,5 @@ std::shared_ptr<RtApiStreamClass> RtApiCoreStreamFactory::createStream(CreateStr
         return {};
     }
 
-    return {};
+    return std::make_shared<RtApiCoreStream>(std::move(stream_), deviceId);
 }

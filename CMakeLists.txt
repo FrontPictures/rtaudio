@@ -159,6 +159,7 @@ endif()
 
 # CoreAudio
 if (RTAUDIO_API_CORE)
+  add_compile_definitions(MAC_OS_X_VERSION_MIN_REQUIRED=MAC_OS_X_VERSION_10_5)
   find_library(COREAUDIO_LIB CoreAudio)
   find_library(COREFOUNDATION_LIB CoreFoundation)
   list(APPEND LINKLIBS ${COREAUDIO_LIB} ${COREFOUNDATION_LIB})
@@ -168,7 +169,8 @@ if (RTAUDIO_API_CORE)
   list(APPEND rtaudio_SOURCES "core/RtApiCoreEnumerator.cpp" "core/RtApiCoreEnumerator.h"
   "core/RtApiCoreProber.cpp" "core/RtApiCoreProber.h"
   "core/CoreCommon.cpp" "core/CoreCommon.h"
-  "core/RtApiCoreStreamFactory.cpp" "core/RtApiCoreStreamFactory.h")
+  "core/RtApiCoreStreamFactory.cpp" "core/RtApiCoreStreamFactory.h"
+  "core/RtApiCoreStream.cpp" "core/RtApiCoreStream.h")
 endif()
 
 # ASIO
