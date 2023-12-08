@@ -101,8 +101,7 @@ RtApiCoreStream::~RtApiCoreStream()
 
 RtAudioErrorType RtApiCoreStream::startStream()
 {
-    std::lock_guard g(mMutex);
-    if (mWasErrorInAudio) {
+    if (stream_.errorState) {
         return error(RTAUDIO_WARNING, "RtApiCore::startStream(): was error in audio thread.");
     }
     if (stream_.state != RtApi::STREAM_STOPPED) {
@@ -203,9 +202,7 @@ bool RtApiCoreStream::callbackEvent(AudioDeviceID deviceId,
 
 void RtApiCoreStream::signalError()
 {
-    std::lock_guard g(mMutex);
-    stream_.state = RtApi::STREAM_ERROR;
-    mWasErrorInAudio = true;
+    stream_.errorState = true;
 }
 
 void RtApiCoreStream::signalXrun(RtApi::StreamMode mode)
@@ -219,7 +216,6 @@ void RtApiCoreStream::signalXrun(RtApi::StreamMode mode)
 
 RtAudioErrorType RtApiCoreStream::stopStreamPriv()
 {
-    std::lock_guard g(mMutex);
     if (stream_.state != RtApi::STREAM_RUNNING && stream_.state != RtApi::STREAM_ERROR) {
         if (stream_.state == RtApi::STREAM_STOPPED)
             return error(RTAUDIO_WARNING, "RtApiCore::stopStream(): the stream is already stopped!");

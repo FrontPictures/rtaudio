@@ -590,6 +590,7 @@ public:
         void* apiHandle;           // void pointer for API specific stream handle information
         StreamMode mode;           // OUTPUT, INPUT, or DUPLEX.
         StreamState state;         // STOPPED, RUNNING, or CLOSED
+        bool errorState = false;   //TODO: add mutex or make atomic
         std::shared_ptr<char[]> userBuffer[2];       // Playback and record, respectively.
         std::shared_ptr<char[]> deviceBuffer;
         bool doConvertBuffer[2];   // Playback and record, respectively.

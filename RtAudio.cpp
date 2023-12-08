@@ -851,7 +851,7 @@ RtApiStreamClass::~RtApiStreamClass()
 
 bool RtApiStreamClass::isStreamRunning() {
     MutexRaii<StreamMutex> lock(stream_.mutex);
-    return stream_.state == RtApi::StreamState::STREAM_RUNNING;
+    return stream_.state == RtApi::StreamState::STREAM_RUNNING && stream_.errorState == false;
 }
 
 unsigned int RtApiStreamClass::getBufferSize(void) const

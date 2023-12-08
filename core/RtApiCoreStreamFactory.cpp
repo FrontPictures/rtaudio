@@ -105,29 +105,6 @@ AudioBufferList *getDeviceStreamConfig(AudioDeviceID id, AudioObjectPropertyScop
     }
     return bufferList;
 }
-
-std::optional<UInt32> getFirstStreamWithChannels(AudioBufferList *bufferList, unsigned int channels)
-{
-    // Look for a single stream meeting our needs.
-    UInt32 nStreams = bufferList->mNumberBuffers;
-    for (int iStream = 0; iStream < nStreams; iStream++) {
-        UInt32 streamChannels = bufferList->mBuffers[iStream].mNumberChannels;
-        if (streamChannels >= channels) {
-            return iStream;
-        }
-    }
-    return {};
-}
-
-void cht(AudioDeviceID id, AudioObjectPropertyScope scope)
-{
-    auto *config = getDeviceStreamConfig(id, scope);
-    if (!config) {
-        return;
-    }
-
-    free(config);
-}
 } // namespace
 
 std::shared_ptr<RtApiStreamClass> RtApiCoreStreamFactory::createStream(CreateStreamParams params)

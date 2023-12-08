@@ -2,12 +2,6 @@
 #include "CoreCommon.h"
 #include <CoreAudio/AudioHardware.h>
 
-#if defined(MAC_OS_VERSION_12_0) && (MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_VERSION_12_0)
-#define KAUDIOOBJECTPROPERTYELEMENT kAudioObjectPropertyElementMain
-#else
-#define KAUDIOOBJECTPROPERTYELEMENT kAudioObjectPropertyElementMaster // deprecated with macOS 12
-#endif
-
 namespace {}
 
 std::vector<RtAudio::DeviceInfoPartial> RtApiCoreEnumerator::listDevices()

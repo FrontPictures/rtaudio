@@ -23,8 +23,10 @@ unsigned int getDeviceChannels(AudioDeviceID id, AudioObjectPropertyScope scope)
     }
     unsigned int nStreams = bufferList->mNumberBuffers;
     unsigned int outputChannels = 0;
-    for (int i = 0; i < nStreams; i++)
-        outputChannels += bufferList->mBuffers[i].mNumberChannels;
+    if (nStreams == 0) {
+        return 0;
+    }
+    outputChannels += bufferList->mBuffers[0].mNumberChannels;
     return outputChannels;
 }
 
