@@ -1,6 +1,8 @@
 #pragma once
 
 #include "RtAudio.h"
+#include "pulse/PaMainloopRunning.h"
+#include <optional>
 #include <thread>
 
 struct pa_mainloop;
@@ -15,17 +17,17 @@ public:
 
     virtual RtAudio::Api getCurrentApi(void) override { return RtAudio::LINUX_PULSE; }
 
-    struct PaEventsUserData
+    struct PaEventsUserData : public PaMainloopRunningUserdata
     {
-        pa_mainloop_api *paMainLoopApi = nullptr;
         RtAudioDeviceCallbackLambda callback = nullptr;
     };
 
 private:
-    PaEventsUserData mUserData;
-
     void notificationThread();
+    bool init(pa_mainloop *ml, pa_context *context);
+
+    PaEventsUserData mUserData;
+    std::unique_ptr<PaMainloopRunning> mMainloopRunning;
     std::thread mNotificationThread;
-    bool initWithHandles(pa_mainloop *ml, pa_context *context);
     RtAudioDeviceCallbackLambda mCallback;
 };

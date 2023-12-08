@@ -7,9 +7,6 @@ struct pa_context;
 class RtApiPulseProber : public RtApiProber
 {
 public:
-    RtApiPulseProber() = default;
-    ~RtApiPulseProber() = default;
-
     RtAudio::Api getCurrentApi(void) override { return RtAudio::LINUX_PULSE; }
     std::optional<RtAudio::DeviceInfo> probeDevice(const std::string &busId) override;
 

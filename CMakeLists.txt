@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
 project(RtAudio LANGUAGES CXX)
 
 # standards version
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -154,7 +154,8 @@ if (RTAUDIO_API_PULSE)
   "pulse/RtApiPulseProber.cpp" "pulse/RtApiPulseProber.h"
   "pulse/RtApiPulseStreamFactory.cpp" "pulse/RtApiPulseStreamFactory.h"
   "pulse/RtApiPulseStream.cpp" "pulse/RtApiPulseStream.h"
-  "pulse/RtApiPulseSystemCallback.cpp" "pulse/RtApiPulseSystemCallback.h")
+  "pulse/RtApiPulseSystemCallback.cpp" "pulse/RtApiPulseSystemCallback.h"
+  "pulse/PaMainloopRunning.cpp" "pulse/PaMainloopRunning.h")
 endif()
 
 # CoreAudio

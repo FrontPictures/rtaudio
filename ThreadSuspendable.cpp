@@ -4,11 +4,9 @@
 namespace {
 inline int clampPriority(int priority, int policy)
 {
-    int min = sched_get_priority_min(policy);
-    int max = sched_get_priority_max(policy);
-    priority = std::max(priority, min);
-    priority = std::min(priority, max);
-    return priority;
+    int min = sched_get_priority_min(priority);
+    int max = sched_get_priority_max(priority);
+    return std::clamp(policy, min, max);
 }
 
 static void *threadMethodJump(void *user)
@@ -62,55 +60,52 @@ ThreadSuspendable::ThreadSuspendable(std::function<bool()> process, bool realtim
 
 ThreadSuspendable::~ThreadSuspendable()
 {
+    stop();
+}
+
+void ThreadSuspendable::resume()
+{
+    std::unique_lock g(mMutex);
+    if (mState == State::STOPPED)
+        return;
+    if (mState == State::RESUMING || mState == State::RUNNING)
+        return;
+    mState = State::RESUMING;
+    mCV.notify_all();
+}
+
+void ThreadSuspendable::suspend()
+{
+    std::unique_lock g(mMutex);
+    if (mState == State::STOPPED)
+        return;
+    if (mState == State::SUSPENDED)
+        return;
+    mState = State::SUSPENDING;
+    mCV.notify_all();
+    while (mState != State::SUSPENDED) {
+        mCV.wait(g);
+    }
+}
+
+void ThreadSuspendable::stop()
+{
+    std::unique_lock g(mMutex);
+    if (mState == State::STOPPED)
+        return;
+    mState = State::STOPPING;
+    mCV.notify_all();
+    while (mState != State::STOPPED) {
+        mCV.wait(g);
+    }
 #ifdef WIN32
     if (mThread.joinable()) {
-        stop(true);
         mThread.join();
     }
 #endif
     if (mThread) {
-        stop(true);
         pthread_join(mThread, 0);
     }
-}
-
-bool ThreadSuspendable::resume(bool blockable)
-{
-    std::unique_lock g(mMutex);
-    if (mState != State::SUSPENDED)
-        return false;
-    mState = State::RESUMING;
-    mCV.notify_one();
-    if (blockable) {
-        mCV.wait(g);
-    }
-    return true;
-}
-
-bool ThreadSuspendable::suspend(bool blockable)
-{
-    std::unique_lock g(mMutex);
-    if (mState != State::RUNNING)
-        return false;
-    mState = State::SUSPENDING;
-    mCV.notify_one();
-    if (blockable) {
-        mCV.wait(g);
-    }
-    return true;
-}
-
-bool ThreadSuspendable::stop(bool blockable)
-{
-    std::unique_lock g(mMutex);
-    if (mState != State::SUSPENDED && mState != State::RUNNING)
-        return false;
-    mState = State::STOPPING;
-    mCV.notify_one();
-    if (blockable) {
-        mCV.wait(g);
-    }
-    return true;
 }
 
 bool ThreadSuspendable::isValid() const
@@ -139,15 +134,15 @@ void ThreadSuspendable::threadMethod()
                     break;
                 case State::RESUMING:
                     mState = State::RUNNING;
-                    mCV.notify_one();
+                    mCV.notify_all();
                     break;
                 case State::SUSPENDING:
                     mState = State::SUSPENDED;
-                    mCV.notify_one();
+                    mCV.notify_all();
                     break;
                 case State::STOPPING:
                     mState = State::STOPPED;
-                    mCV.notify_one();
+                    mCV.notify_all();
                     return;
                 case State::RUNNING:
                 case State::STOPPED:

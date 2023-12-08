@@ -30,7 +30,7 @@ std::string DeviceParamToString(RtAudioDeviceParam param) {
 int main(int argc, char* argv[]) {
     if (argc != 2 && argc != 3) usage();
     auto api = RtAudio::getCompiledApiByName(argv[1]);
-    int durationSecs = 10;
+    int durationSecs = INT_MAX;
     if (argc == 3) {
         durationSecs = atoi(argv[2]);
     }

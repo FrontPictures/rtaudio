@@ -1,7 +1,6 @@
 #pragma once
 #include "RtAudio.h"
 #include "ThreadSuspendable.h"
-#include "pulse/pulseaudio.h"
 #include <pulse/simple.h>
 
 class RtApiPulseStream : public RtApiStreamClass

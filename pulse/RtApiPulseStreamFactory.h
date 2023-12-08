@@ -1,13 +1,11 @@
 #pragma once
 #include "RtAudio.h"
-#include "pulse/pulseaudio.h"
+#include <pulse/channelmap.h>
 struct pa_simple;
 
 class RtApiPulseStreamFactory : public RtApiStreamClassFactory
 {
 public:
-    RtApiPulseStreamFactory() = default;
-    ~RtApiPulseStreamFactory() = default;
     RtAudio::Api getCurrentApi(void) override { return RtAudio::LINUX_PULSE; }
     std::shared_ptr<RtApiStreamClass> createStream(CreateStreamParams params) override;
 

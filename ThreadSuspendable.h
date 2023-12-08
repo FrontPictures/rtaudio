@@ -16,9 +16,9 @@ public:
     ThreadSuspendable &operator=(const ThreadSuspendable &) = delete;
     ~ThreadSuspendable();
 
-    bool resume(bool blockable = false);
-    bool suspend(bool blockable = true);
-    bool stop(bool blockable = true);
+    void resume();
+    void suspend();
+    void stop();
     bool isValid() const;
 
     //do not call this

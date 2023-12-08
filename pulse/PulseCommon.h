@@ -26,12 +26,13 @@ static constexpr std::array<rtaudio_pa_format_mapping_t, 4> pulse_supported_samp
 
 constexpr pa_sample_format_t getPulseFormatByRt(RtAudioFormat rtf)
 {
-    for (auto &f : pulse_supported_sampleformats) {
-        if (f.rtaudio_format == rtf) {
-            return f.pa_format;
-        }
+    auto it = std::ranges::find(pulse_supported_sampleformats,
+                                rtf,
+                                &rtaudio_pa_format_mapping_t::rtaudio_format);
+    if (it == pulse_supported_sampleformats.end()) {
+        return PA_SAMPLE_INVALID;
     }
-    return PA_SAMPLE_INVALID;
+    return it->pa_format;
 }
 
 class PaMainloop
@@ -44,17 +45,6 @@ public:
 
     PaMainloop(const PaMainloop &) = delete;
     PaMainloop &operator=(const PaMainloop &) = delete;
-    PaMainloop(PaMainloop &&other) { swap(*this, other); }
-    PaMainloop &operator=(PaMainloop other) noexcept
-    {
-        swap(*this, other);
-        return *this;
-    }
-    void swap(PaMainloop &first, PaMainloop &second) noexcept
-    {
-        using std::swap;
-        swap(first.mMainloop, second.mMainloop);
-    }
 
 private:
     pa_mainloop *mMainloop = NULL;
@@ -70,17 +60,6 @@ public:
 
     PaContext(const PaContext &) = delete;
     PaContext &operator=(const PaContext &) = delete;
-    PaContext(PaContext &&other) { swap(*this, other); }
-    PaContext &operator=(PaContext other) noexcept
-    {
-        swap(*this, other);
-        return *this;
-    }
-    void swap(PaContext &first, PaContext &second) noexcept
-    {
-        using std::swap;
-        swap(first.mContext, second.mContext);
-    }
 
 private:
     pa_context *mContext = NULL;

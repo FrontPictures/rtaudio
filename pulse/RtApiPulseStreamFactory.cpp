@@ -22,6 +22,8 @@ std::shared_ptr<RtApiStreamClass> RtApiPulseStreamFactory::createStream(CreateSt
         /* Note: We could add DUPLEX by synchronizing multiple streams,
        but it would mean moving from Simple API to Asynchronous API:
        https://freedesktop.org/software/pulseaudio/doxygen/streams.html#sync_streams */
+        error(RTAUDIO_SYSTEM_ERROR,
+              "RtApiPulseStreamFactory::createStream: DUPLEX mode not supported by Pulse.");
         return {};
     }
 
@@ -32,20 +34,27 @@ std::shared_ptr<RtApiStreamClass> RtApiPulseStreamFactory::createStream(CreateSt
         ss.channels = params.channelsInput;
     }
     if (ss.channels == 0) {
+        error(RTAUDIO_SYSTEM_ERROR, "RtApiPulseStreamFactory::createStream: no channels.");
         return {};
     }
     if (isSamplerateSupported(params.sampleRate) == false) {
+        error(RTAUDIO_SYSTEM_ERROR,
+              "RtApiPulseStreamFactory::createStream: samplerate not supported.");
         return {};
     }
     ss.rate = params.sampleRate;
     ss.format = getPulseFormatByRt(params.format);
     if (ss.format == PA_SAMPLE_INVALID) {
+        error(RTAUDIO_SYSTEM_ERROR,
+              "RtApiPulseStreamFactory::createStream: sample format not supported.");
         return {};
     }
 
     int error_code = 0;
     pa_channel_map mapping{};
     if (pa_channel_map_init_extend(&mapping, ss.channels, PA_CHANNEL_MAP_WAVEEX) == NULL) {
+        error(RTAUDIO_SYSTEM_ERROR,
+              "RtApiPulseStreamFactory::createStream: channels map not initialized.");
         return {};
     }
 
@@ -54,10 +63,10 @@ std::shared_ptr<RtApiStreamClass> RtApiPulseStreamFactory::createStream(CreateSt
         streamName = params.options->streamName;
 
     unsigned int bufferBytes = ss.channels * params.bufferSize * RtApi::formatBytes(params.format);
-    unsigned int bufferNumbers = 4;
+    unsigned int buffersCount = 4;
 
     if (params.options && params.options->numberOfBuffers > 0) {
-        bufferNumbers = params.options->numberOfBuffers;
+        buffersCount = params.options->numberOfBuffers;
     }
 
     RtApi::RtApiStream stream_{};
@@ -66,7 +75,7 @@ std::shared_ptr<RtApiStreamClass> RtApiPulseStreamFactory::createStream(CreateSt
     stream_.doByteSwap[params.mode] = false;
     stream_.deviceInterleaved[params.mode] = true;
     stream_.latency[params.mode] = 0;
-    stream_.nBuffers = bufferNumbers;
+    stream_.nBuffers = buffersCount;
 
     if (params.options && params.options->flags & RTAUDIO_SCHEDULE_REALTIME) {
         stream_.callbackInfo.priority = params.options->priority;
@@ -74,9 +83,13 @@ std::shared_ptr<RtApiStreamClass> RtApiPulseStreamFactory::createStream(CreateSt
     }
 
     if (setupStreamWithParams(stream_, params) == false) {
+        error(RTAUDIO_SYSTEM_ERROR,
+              "RtApiPulseStreamFactory::createStream: failed to setup stream.");
         return {};
     }
     if (setupStreamCommon(stream_) == false) {
+        error(RTAUDIO_SYSTEM_ERROR,
+              "RtApiPulseStreamFactory::createStream: failed to setup stream common.");
         return {};
     }
 
@@ -85,7 +98,7 @@ std::shared_ptr<RtApiStreamClass> RtApiPulseStreamFactory::createStream(CreateSt
 
     s_play_ptr = createPASimpleHandle(params.mode,
                                       bufferBytes,
-                                      bufferNumbers,
+                                      buffersCount,
                                       streamName.c_str(),
                                       dev_name,
                                       mapping,
@@ -127,7 +140,6 @@ pa_simple *RtApiPulseStreamFactory::createPASimpleHandle(RtApi::StreamMode mode,
         break;
     case RtApi::OUTPUT: {
         // pa_buffer_attr::fragsize is recording-only.
-        // Hopefully PortAudio won't access uninitialized fields.
         buffer_attr.maxlength = bufferBytes * bufferNumbers;
         buffer_attr.minreq = -1;
         buffer_attr.prebuf = -1;

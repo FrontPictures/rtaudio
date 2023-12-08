@@ -23,9 +23,7 @@ RtAudioErrorType RtApiPulseStream::startStream()
     if (mThread.isValid() == false) {
         return RTAUDIO_SYSTEM_ERROR;
     }
-    if (mThread.resume(false) == false) {
-        return RTAUDIO_SYSTEM_ERROR;
-    }
+    mThread.resume();
     stream_.state = RtApi::STREAM_RUNNING;
     return RTAUDIO_NO_ERROR;
 }
@@ -43,9 +41,7 @@ RtAudioErrorType RtApiPulseStream::stopStreamPriv()
     if (mThread.isValid() == false) {
         return RTAUDIO_SYSTEM_ERROR;
     }
-    if (mThread.suspend(true) == false) {
-        return RTAUDIO_SYSTEM_ERROR;
-    }
+    mThread.suspend();
     stream_.state = RtApi::STREAM_STOPPED;
     return RTAUDIO_NO_ERROR;
 }
