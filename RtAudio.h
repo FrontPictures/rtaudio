@@ -516,48 +516,6 @@ public:
 };
 #pragma pack(pop)
 
-#include <sstream>
-
-class RTAUDIO_DLL_PUBLIC ErrorBase {
-public:
-    virtual ~ErrorBase() {}
-
-    void setErrorCallback(RtAudioErrorCallback errorCallback) { errorCallback_ = errorCallback; }
-    void showWarnings(bool value) { showWarnings_ = value; }
-    const std::string& getErrorText(void) const;
-
-    RtAudioErrorType error(RtAudioErrorType type, const std::string& message);
-protected:
-    std::ostringstream errorStream_;
-    RtAudioErrorCallback errorCallback_ = nullptr;
-    RtAudioErrorType errorThread(RtAudioErrorType type, const std::string& message);
-    RtAudioErrorType error(RtAudioErrorType type);
-private:
-    std::string errorText_;
-    bool showWarnings_ = false;
-};
-
-class RTAUDIO_DLL_PUBLIC RtApiEnumerator : public ErrorBase {
-public:
-    virtual RtAudio::Api getCurrentApi(void) = 0;
-    virtual std::vector<RtAudio::DeviceInfoPartial> listDevices(void) = 0;
-};
-
-class RTAUDIO_DLL_PUBLIC RtApiProber : public ErrorBase {
-public:
-    RtApiProber() {}
-    virtual ~RtApiProber() {}
-    virtual RtAudio::Api getCurrentApi(void) = 0;
-    virtual std::optional<RtAudio::DeviceInfo> probeDevice(const std::string& busId) = 0;
-};
-
-class RTAUDIO_DLL_PUBLIC RtApiSystemCallback : public ErrorBase {
-public:
-    RtApiSystemCallback() {}
-    virtual ~RtApiSystemCallback() {}
-    virtual RtAudio::Api getCurrentApi(void) = 0;
-};
-
 class RTAUDIO_DLL_PUBLIC RtApi
 {
 public:
@@ -616,6 +574,50 @@ public:
     static void convertBuffer(const RtApi::RtApiStream stream_, char* outBuffer, char* inBuffer, RtApi::ConvertInfo info, unsigned int samples, RtApi::StreamMode mode);
     static void byteSwapBuffer(char* buffer, unsigned int samples, RtAudioFormat format);
     static void setConvertInfo(RtApi::StreamMode mode, RtApi::RtApiStream& stream_);
+};
+
+
+#include <sstream>
+
+class RTAUDIO_DLL_PUBLIC ErrorBase {
+public:
+    virtual ~ErrorBase() {}
+
+    void setErrorCallback(RtAudioErrorCallback errorCallback) { errorCallback_ = errorCallback; }
+    void showWarnings(bool value) { showWarnings_ = value; }
+    const std::string& getErrorText(void) const;
+
+    RtAudioErrorType error(RtAudioErrorType type, const std::string& message);
+protected:
+    std::ostringstream errorStream_;
+    RtAudioErrorCallback errorCallback_ = nullptr;
+    RtAudioErrorType errorThread(RtAudioErrorType type, const std::string& message);
+    RtAudioErrorType error(RtAudioErrorType type);
+private:
+    std::string errorText_;
+    bool showWarnings_ = false;
+};
+
+class RTAUDIO_DLL_PUBLIC RtApiEnumerator : public ErrorBase {
+public:
+    virtual RtAudio::Api getCurrentApi(void) = 0;
+    virtual std::vector<RtAudio::DeviceInfoPartial> listDevices(void) = 0;
+    virtual std::string getDefaultDevice(RtApi::StreamMode mode) { return {}; }
+};
+
+class RTAUDIO_DLL_PUBLIC RtApiProber : public ErrorBase {
+public:
+    RtApiProber() {}
+    virtual ~RtApiProber() {}
+    virtual RtAudio::Api getCurrentApi(void) = 0;
+    virtual std::optional<RtAudio::DeviceInfo> probeDevice(const std::string& busId) = 0;
+};
+
+class RTAUDIO_DLL_PUBLIC RtApiSystemCallback : public ErrorBase {
+public:
+    RtApiSystemCallback() {}
+    virtual ~RtApiSystemCallback() {}
+    virtual RtAudio::Api getCurrentApi(void) = 0;
 };
 
 class RTAUDIO_DLL_PUBLIC RtApiStreamClass : public ErrorBase {

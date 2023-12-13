@@ -78,3 +78,36 @@ std::vector<RtAudio::DeviceInfoPartial> RtApiWasapiEnumerator::listDevices(void)
     }
     return res;
 }
+
+std::string RtApiWasapiEnumerator::getDefaultDevice(RtApi::StreamMode mode)
+{
+    if (mode != RtApi::StreamMode::INPUT && mode != RtApi::StreamMode::OUTPUT) {
+        error(RTAUDIO_SYSTEM_ERROR, "RtApiWasapiEnumerator::getDefaultDevice: WASAPI does not supports duplex.");
+        return {};
+    }
+    EDataFlow flow = eAll;
+    if (mode == RtApi::StreamMode::INPUT) {
+        flow = eCapture;
+    }
+    else if (mode == RtApi::StreamMode::OUTPUT) {
+        flow = eRender;
+    }
+
+    Microsoft::WRL::ComPtr<IMMDevice> devicePtr;
+    LPWSTR deviceId = NULL;
+
+    HRESULT hr = deviceEnumerator_->GetDefaultAudioEndpoint(
+        flow, eConsole, &devicePtr);
+    if (FAILED(hr)) {
+        error(RTAUDIO_DRIVER_ERROR, "RtApiWasapiEnumerator::getDefaultDevice: failed to get default device.");
+        return {};
+    }
+    hr = devicePtr->GetId(&deviceId);
+    if (FAILED(hr)) {
+        error(RTAUDIO_DRIVER_ERROR, "RtApiWasapiEnumerator::getDefaultDevice: Unable to get device Id.");
+        return {};
+    }
+    auto id_str = convertCharPointerToStdString(deviceId);
+    CoTaskMemFree(deviceId);
+    return id_str;
+}

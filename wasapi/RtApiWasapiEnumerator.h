@@ -10,4 +10,5 @@ public:
     ~RtApiWasapiEnumerator() {}
     RtAudio::Api getCurrentApi(void) override { return RtAudio::WINDOWS_WASAPI; }
     virtual std::vector<RtAudio::DeviceInfoPartial> listDevices(void) override;
+    virtual std::string getDefaultDevice(RtApi::StreamMode mode) override;
 };
