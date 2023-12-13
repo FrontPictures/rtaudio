@@ -2,6 +2,7 @@
 #include <cassert>
 
 namespace {
+#ifndef WIN32
 inline int clampPriority(int priority, int policy)
 {
     int min = sched_get_priority_min(priority);
@@ -40,14 +41,14 @@ pthread_attr_t setupAttrsPriority(int priority)
 #endif
     return attr;
 }
-
+#endif // !WIN32
 } // namespace
 
 ThreadSuspendable::ThreadSuspendable(std::function<bool()> process, bool realtime, int priority)
     : mProcess(process)
 {
 #ifdef WIN32
-    mThread = std::thread(&ThreadSuspendable::threadMethod, this, realtime, priority);
+    mThread = std::thread(&ThreadSuspendable::threadMethod, this);
 #else
     pthread_attr_t attr = setupAttrsPriority(priority);
     int result = pthread_create(&mThread, &attr, threadMethodJump, this);
@@ -102,10 +103,11 @@ void ThreadSuspendable::stop()
     if (mThread.joinable()) {
         mThread.join();
     }
-#endif
+#else
     if (mThread) {
         pthread_join(mThread, 0);
     }
+#endif
 }
 
 bool ThreadSuspendable::isValid() const
