@@ -218,6 +218,8 @@ std::shared_ptr<RtApiStreamClass> RtApiAlsaStreamFactory::createStream(CreateStr
         operator snd_output_t *() { return _out; }
         snd_output_t *_out;
     } out;
+#else
+    snd_output_t *out = nullptr;
 #endif
 
     int openMode = SND_PCM_ASYNC;
