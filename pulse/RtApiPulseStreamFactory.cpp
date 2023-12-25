@@ -1,6 +1,8 @@
 #include "RtApiPulseStreamFactory.h"
+#include "PaMainloopRunning.h"
 #include "PulseCommon.h"
 #include "RtApiPulseStream.h"
+#include <memory>
 #include <pulse/pulseaudio.h>
 #include <pulse/simple.h>
 
@@ -13,6 +15,65 @@ bool isSamplerateSupported(unsigned int sampleRate)
         }
     }
     return false;
+}
+
+struct PaDeviceInitUserData : public PaMainloopRunningUserdata
+{
+    int some_value = 0;
+    pa_stream *stream = nullptr;
+    const char *dev_name = nullptr;
+    pa_buffer_attr bufAttr{};
+};
+
+struct UserDataContext
+{
+public:
+    void setState(pa_context_state_t _state) { mState = _state; }
+    pa_context_state_t getState() const { return mState; }
+    bool isError() const { return mState != PA_CONTEXT_UNCONNECTED && !PA_CONTEXT_IS_GOOD(mState); }
+    bool isReady() const { return mState == PA_CONTEXT_READY; }
+    bool isReadyOrError() const { return isError() || isReady(); }
+
+private:
+    pa_context_state_t mState = PA_CONTEXT_UNCONNECTED;
+};
+
+struct UserDataStream
+{
+public:
+    void setState(pa_stream_state_t _state) { mState = _state; }
+    pa_stream_state_t getState() const { return mState; }
+    bool isError() const { return mState != PA_STREAM_UNCONNECTED && !PA_STREAM_IS_GOOD(mState); }
+    bool isReady() const { return mState == PA_STREAM_READY; }
+
+private:
+    pa_stream_state_t mState = PA_STREAM_UNCONNECTED;
+};
+
+void rt_pa_stream_notify_cb(pa_stream *p, void *userdata)
+{
+    PaDeviceInitUserData *paProbeInfo = reinterpret_cast<PaDeviceInitUserData *>(userdata);
+
+    auto state = pa_stream_get_state(p);
+    switch (state) {
+    case PA_STREAM_READY:
+
+        break;
+    case PA_STREAM_CREATING:
+        return;
+    default:
+        paProbeInfo->finished(1);
+        return;
+    }
+}
+
+// This is the initial function that is called when the callback is
+// set. This one then calls the functions above.
+void rt_pa_context_state_cb(pa_context *context, void *userdata)
+{
+    UserDataContext *paProbeInfo = reinterpret_cast<UserDataContext *>(userdata);
+    auto state = pa_context_get_state(context);
+    paProbeInfo->setState(state);
 }
 
 } // namespace
@@ -69,6 +130,16 @@ std::shared_ptr<RtApiStreamClass> RtApiPulseStreamFactory::createStream(CreateSt
         buffersCount = params.options->numberOfBuffers;
     }
 
+    pa_buffer_attr buffer_attr{};
+    buffer_attr.maxlength = bufferBytes * buffersCount;
+    if (params.mode == RtApi::INPUT) {
+        buffer_attr.fragsize = bufferBytes;
+    } else if (params.mode == RtApi::OUTPUT) {
+        buffer_attr.minreq = -1;
+        buffer_attr.prebuf = -1;
+        buffer_attr.tlength = -1;
+    }
+
     RtApi::RtApiStream stream_{};
     stream_.nDeviceChannels[params.mode] = ss.channels;
     stream_.deviceFormat[params.mode] = params.format;
@@ -95,6 +166,17 @@ std::shared_ptr<RtApiStreamClass> RtApiPulseStreamFactory::createStream(CreateSt
 
     const char *dev_name = params.busId.c_str();
     pa_simple *s_play_ptr = nullptr;
+
+    createPAStream(params.mode,
+                   bufferBytes,
+                   buffersCount,
+                   streamName.c_str(),
+                   dev_name,
+                   mapping,
+                   ss,
+                   buffer_attr);
+
+    return {};
 
     s_play_ptr = createPASimpleHandle(params.mode,
                                       bufferBytes,
@@ -160,4 +242,51 @@ pa_simple *RtApiPulseStreamFactory::createPASimpleHandle(RtApi::StreamMode mode,
         return nullptr;
     }
     return s_play_ptr;
+}
+
+pa_simple *RtApiPulseStreamFactory::createPAStream(RtApi::StreamMode mode,
+                                                   unsigned int bufferBytes,
+                                                   unsigned int bufferNumbers,
+                                                   const char *streamName,
+                                                   const char *dev_name,
+                                                   pa_channel_map mapping,
+                                                   pa_sample_spec ss,
+                                                   pa_buffer_attr bufAttr)
+{
+    std::shared_ptr<PaMainloop> ml = std::make_shared<PaMainloop>();
+    if (ml->isValid() == false) {
+        errorStream_ << "RtApiPulse::probeDevices: pa_mainloop_new() failed.";
+        error(RTAUDIO_WARNING, errorStream_.str());
+        return {};
+    }
+    return {};
+}
+
+int RtApiPulseStreamFactory::createPAStreamHandles(pa_mainloop *ml,
+                                                   pa_context *context,
+                                                   const char *streamName,
+                                                   const char *dev_name,
+                                                   pa_channel_map mapping,
+                                                   pa_sample_spec ss,
+                                                   pa_buffer_attr bufAttr)
+{
+    pa_stream *stream = pa_stream_new(context, streamName, &ss, &mapping);
+    if (!stream) {
+        return {};
+    }
+    PaDeviceInitUserData paUserData{};
+    paUserData.setMainloop(ml);
+    paUserData.stream = stream;
+    paUserData.dev_name = dev_name;
+    paUserData.bufAttr = bufAttr;
+
+    if (paUserData.isValid() == false) {
+        error(RTAUDIO_WARNING, "RtApiPulseProber::probeInfoHandle: failed create probe info.");
+        return {};
+    }
+
+    PaMainloopRunning mMainloopRunning(ml, context, rt_pa_context_state_cb, &paUserData);
+    auto res = mMainloopRunning.run();
+
+    return 0;
 }

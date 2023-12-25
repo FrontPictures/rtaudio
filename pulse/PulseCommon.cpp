@@ -7,10 +7,25 @@ PaMainloop::PaMainloop()
     mMainloop = pa_mainloop_new();
 }
 
+bool PaMainloop::runUntil(std::function<bool()> postdicate)
+{
+    do {
+        int retVal = 0;
+        if (pa_mainloop_iterate(mMainloop, 1, &retVal) < 0) {
+            return false;
+        }
+    } while (postdicate() == false);
+    return true;
+}
+
 PaMainloop::~PaMainloop()
 {
-    if (mMainloop)
+    if (mMainloop) {
+        auto api = pa_mainloop_get_api(mMainloop);
+        api->quit(api, 0);
+        pa_mainloop_run(mMainloop, nullptr);
         pa_mainloop_free(mMainloop);
+    }
 }
 
 bool PaMainloop::isValid() const
@@ -21,27 +36,4 @@ bool PaMainloop::isValid() const
 pa_mainloop *PaMainloop::handle() const
 {
     return mMainloop;
-}
-
-PaContext::PaContext(pa_mainloop_api *api)
-{
-    if (!api)
-        return;
-    mContext = pa_context_new_with_proplist(api, NULL, NULL);
-}
-
-PaContext::~PaContext()
-{
-    if (mContext)
-        pa_context_unref(mContext);
-}
-
-bool PaContext::isValid() const
-{
-    return mContext ? true : false;
-}
-
-pa_context *PaContext::handle() const
-{
-    return mContext;
 }

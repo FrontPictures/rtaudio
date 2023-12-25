@@ -46,21 +46,9 @@ public:
     PaMainloop(const PaMainloop &) = delete;
     PaMainloop &operator=(const PaMainloop &) = delete;
 
+    bool runUntil(std::function<bool()>);
+
 private:
     pa_mainloop *mMainloop = NULL;
 };
 
-class PaContext
-{
-public:
-    PaContext(pa_mainloop_api *api);
-    ~PaContext();
-    bool isValid() const;
-    pa_context *handle() const;
-
-    PaContext(const PaContext &) = delete;
-    PaContext &operator=(const PaContext &) = delete;
-
-private:
-    pa_context *mContext = NULL;
-};

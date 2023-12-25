@@ -1,119 +1,173 @@
 #include "RtApiPulseEnumerator.h"
 #include "PulseCommon.h"
+#include "pulse/PaContext.h"
 #include "pulse/PaMainloopRunning.h"
 
 namespace {
-struct PaDeviceProbeInfo : public PaMainloopRunningUserdata
+
+struct OpaqueResultError
 {
+public:
+    void setError() { mError = true; }
+    void setReady() { mReady = true; }
+    bool isReady() const { return mReady; }
+    bool isError() const { return mError; }
+    bool isReadyOrError() const { return isReady() || isError(); }
+
+private:
+    bool mReady = false;
+    bool mError = false;
+};
+
+struct ServerInfoStruct : public OpaqueResultError
+{
+    unsigned int defaultRate = 0;
     std::string defaultSinkName;
     std::string defaultSourceName;
-    int defaultRate = 0;
+};
+
+struct ServerDevicesStruct : public OpaqueResultError
+{
     std::vector<RtAudio::DeviceInfoPartial> devices;
 };
 
-// The following 3 functions are called by the device probing
-// system. This first one gets overall system information.
-void rt_pa_set_server_info_cb(pa_context *, const pa_server_info *info, void *userdata)
+void rt_pa_set_server_info_cb2(pa_context *, const pa_server_info *info, void *userdata)
 {
-    PaDeviceProbeInfo *paProbeInfo = static_cast<PaDeviceProbeInfo *>(userdata);
+    assert(userdata);
+    auto *serverInfo = reinterpret_cast<ServerInfoStruct *>(userdata);
     if (!info) {
-        paProbeInfo->finished(1);
+        serverInfo->setError();
         return;
     }
-    paProbeInfo->defaultRate = info->sample_spec.rate;
-    paProbeInfo->defaultSinkName = info->default_sink_name;
-    paProbeInfo->defaultSourceName = info->default_source_name;
+    serverInfo->defaultRate = info->sample_spec.rate;
+    serverInfo->defaultSinkName = info->default_sink_name;
+    serverInfo->defaultSourceName = info->default_source_name;
+    serverInfo->setReady();
 }
 
-// Used to get output device information.
-void rt_pa_set_sink_info_cb(pa_context * /*c*/, const pa_sink_info *i, int eol, void *userdata)
+std::optional<ServerInfoStruct> getServerInfo(std::shared_ptr<PaContext> context)
 {
-    if (eol)
+    if (!context)
+        return {};
+    auto loop = context->getMainloop();
+    if (!loop)
+        return {};
+
+    ServerInfoStruct res{};
+    pa_operation *o = pa_context_get_server_info(context->handle(), rt_pa_set_server_info_cb2, &res);
+    if (!o) {
+        return {};
+    }
+    loop->runUntil([&]() { return res.isReadyOrError() || context->hasError(); });
+    pa_operation_unref(o);
+    if (res.isReady() == false) {
+        return {};
+    }
+    return res;
+}
+
+void rt_pa_set_sink_info_cb2(pa_context * /*c*/, const pa_sink_info *i, int eol, void *userdata)
+{
+    assert(userdata);
+    if (eol) {
         return;
-    PaDeviceProbeInfo *paProbeInfo = static_cast<PaDeviceProbeInfo *>(userdata);
+    }
+    auto *devicesStruct = reinterpret_cast<ServerDevicesStruct *>(userdata);
+    if (!i) {
+        devicesStruct->setError();
+        return;
+    }
     RtAudio::DeviceInfoPartial info{};
     info.busID = i->name;
     info.name = i->description;
     info.supportsOutput = true;
-    paProbeInfo->devices.push_back(std::move(info));
+    devicesStruct->devices.push_back(std::move(info));
 }
 
-// Used to get input device information.
-static void rt_pa_set_source_info_cb_and_quit(pa_context * /*c*/,
-                                              const pa_source_info *i,
-                                              int eol,
-                                              void *userdata)
+static void rt_pa_set_source_info_cb_and_quit2(pa_context * /*c*/,
+                                               const pa_source_info *i,
+                                               int eol,
+                                               void *userdata)
 {
-    PaDeviceProbeInfo *paProbeInfo = static_cast<PaDeviceProbeInfo *>(userdata);
+    assert(userdata);
+    auto *devicesStruct = reinterpret_cast<ServerDevicesStruct *>(userdata);
     if (eol) {
-        paProbeInfo->finished(0);
+        devicesStruct->setReady();
+        return;
+    }
+    if (!i) {
+        devicesStruct->setError();
         return;
     }
     RtAudio::DeviceInfoPartial info{};
     info.busID = i->name;
     info.name = i->description;
     info.supportsInput = true;
-    paProbeInfo->devices.push_back(std::move(info));
+    devicesStruct->devices.push_back(std::move(info));
 }
 
-// This is the initial function that is called when the callback is
-// set. This one then calls the functions above.
-void rt_pa_context_state_cb(pa_context *context, void *userdata)
+std::optional<ServerDevicesStruct> getServerDevices(std::shared_ptr<PaContext> context)
 {
-    PaDeviceProbeInfo *paProbeInfo = static_cast<PaDeviceProbeInfo *>(userdata);
-    auto state = pa_context_get_state(context);
-    switch (state) {
-    case PA_CONTEXT_READY:
-        pa_context_get_server_info(context, rt_pa_set_server_info_cb, userdata);
-        pa_context_get_sink_info_list(context, rt_pa_set_sink_info_cb, userdata);
-        pa_context_get_source_info_list(context, rt_pa_set_source_info_cb_and_quit, userdata);
-        break;
-    default:
-        break;
-    }
-}
+    if (!context)
+        return {};
+    auto loop = context->getMainloop();
+    if (!loop)
+        return {};
 
+    ServerDevicesStruct res;
+    pa_operation *operSinks = pa_context_get_sink_info_list(context->handle(),
+                                                            rt_pa_set_sink_info_cb2,
+                                                            &res);
+    pa_operation *operSources = pa_context_get_source_info_list(context->handle(),
+                                                                rt_pa_set_source_info_cb_and_quit2,
+                                                                &res);
+
+    if (operSinks && operSources) {
+        loop->runUntil([&]() { return res.isReadyOrError() || context->hasError(); });
+    }
+
+    if (operSinks) {
+        pa_operation_unref(operSinks);
+    }
+    if (operSources) {
+        pa_operation_unref(operSources);
+    }
+    if (res.isReady() == false) {
+        return {};
+    }
+    return res;
+}
 } // namespace
 
 std::vector<RtAudio::DeviceInfoPartial> RtApiPulseEnumerator::listDevices()
 {
-    PaMainloop ml;
-    if (ml.isValid() == false) {
+    std::shared_ptr<PaMainloop> ml = std::make_shared<PaMainloop>();
+
+    if (ml->isValid() == false) {
         errorStream_ << "RtApiPulse::probeDevices: pa_mainloop_new() failed.";
-        error(RTAUDIO_WARNING, errorStream_.str());
+        error(RTAUDIO_SYSTEM_ERROR, errorStream_.str());
         return {};
     }
 
-    PaContext context(pa_mainloop_get_api(ml.handle()));
-    if (context.isValid() == false) {
+    std::shared_ptr<PaContext> context = std::make_shared<PaContext>(ml);
+    if (context->isValid() == false) {
         errorStream_ << "RtApiPulse::probeDevices: pa_context_new() failed.";
-        error(RTAUDIO_WARNING, errorStream_.str());
+        error(RTAUDIO_SYSTEM_ERROR, errorStream_.str());
         return {};
     }
 
-    auto devices = listDevicesHandles(ml.handle(), context.handle());
-    return devices;
-}
-
-std::vector<RtAudio::DeviceInfoPartial> RtApiPulseEnumerator::listDevicesHandles(pa_mainloop *ml,
-                                                                                 pa_context *context)
-{
-    if (!ml || !context)
-        return {};
-    PaDeviceProbeInfo paProbeInfo{};
-    paProbeInfo.setMainloop(ml);
-    if (paProbeInfo.isValid() == false) {
-        error(RTAUDIO_WARNING, "RtApiPulseProber::probeInfoHandle: failed create probe info.");
+    if (context->connect(nullptr) == false) {
+        errorStream_ << "PaMainloopRunning::run: pa_context_connect() failed: "
+                     << pa_strerror(pa_context_errno(context->handle()));
+        error(RTAUDIO_SYSTEM_ERROR, errorStream_.str());
         return {};
     }
 
-    PaMainloopRunning mMainloopRunning(ml, context, rt_pa_context_state_cb, &paProbeInfo);
-    auto res = mMainloopRunning.run();
-
-    if (res != RTAUDIO_NO_ERROR) {
-        errorStream_ << "RtApiPulse::probeDevices: could not get server info.";
-        error(RTAUDIO_WARNING, errorStream_.str());
+    auto devices = getServerDevices(context);
+    if (!devices) {
+        errorStream_ << "PaMainloopRunning::run: get devices failed: ";
+        error(RTAUDIO_SYSTEM_ERROR, errorStream_.str());
         return {};
     }
-    return paProbeInfo.devices;
+    return devices->devices;
 }

@@ -67,7 +67,8 @@ bool RtApiPulseStream::processOutput()
         bytes = stream_.nUserChannels[RtApi::OUTPUT] * stream_.bufferSize
                 * RtApi::formatBytes(stream_.userFormat);
 
-    if (pa_simple_write(mHandle, pulse_out, bytes, &pa_error) < 0) {
+    auto res = pa_simple_write(mHandle, pulse_out, bytes, &pa_error);
+    if (res < 0) {
         stream_.state = RtApi::STREAM_ERROR;
         return false;
     }

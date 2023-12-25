@@ -123,7 +123,7 @@ std::optional<RtAudio::DeviceInfo> RtApiPulseProber::probeDevice(const std::stri
         return {};
     }
 
-    PaContext context(pa_mainloop_get_api(ml.handle()));
+    /*PaContext context(pa_mainloop_get_api(ml.handle()));
     if (context.isValid() == false) {
         errorStream_ << "RtApiPulse::probeDevices: pa_context_new() failed.";
         error(RTAUDIO_WARNING, errorStream_.str());
@@ -131,7 +131,8 @@ std::optional<RtAudio::DeviceInfo> RtApiPulseProber::probeDevice(const std::stri
     }
 
     auto info = probeInfoHandle(ml.handle(), context.handle(), busId);
-    return info;
+    return info;*/
+    return {};
 }
 
 std::optional<RtAudio::DeviceInfo> RtApiPulseProber::probeInfoHandle(pa_mainloop *ml,

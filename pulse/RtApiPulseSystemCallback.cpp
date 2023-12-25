@@ -143,13 +143,14 @@ void RtApiPulseSystemCallback::notificationThread()
         return;
     }
 
-    PaContext context(pa_mainloop_get_api(ml.handle()));
+    /*PaContext context(pa_mainloop_get_api(ml.handle()));
     if (context.isValid() == false) {
         errorStream_ << "RtApiPulse::probeDevices: pa_context_new() failed.";
         error(RTAUDIO_WARNING, errorStream_.str());
         return;
-    }
-    init(ml.handle(), context.handle());
+    }*/
+    //init(ml.handle(), context.handle());
+    return;
 }
 
 bool RtApiPulseSystemCallback::init(pa_mainloop *ml, pa_context *context)
