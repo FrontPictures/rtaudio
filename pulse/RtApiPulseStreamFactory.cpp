@@ -1,4 +1,5 @@
 #include "RtApiPulseStreamFactory.h"
+#include "PaMainloop.h"
 #include "PaMainloopRunning.h"
 #include "PulseCommon.h"
 #include "RtApiPulseStream.h"

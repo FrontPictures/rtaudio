@@ -151,6 +151,8 @@ if (RTAUDIO_API_PULSE)
   list(APPEND API_LIST "pulse")
   list(APPEND rtaudio_SOURCES "pulse/RtApiPulseEnumerator.cpp" "pulse/RtApiPulseEnumerator.h"
   "pulse/PulseCommon.cpp" "pulse/PulseCommon.h"
+  "pulse/PaMainloop.cpp" "pulse/PaMainloop.h"
+  "pulse/PaContextWithMainloop.cpp" "pulse/PaContextWithMainloop.h"
   "pulse/PaContext.cpp" "pulse/PaContext.h"
   "pulse/RtApiPulseProber.cpp" "pulse/RtApiPulseProber.h"
   "pulse/RtApiPulseStreamFactory.cpp" "pulse/RtApiPulseStreamFactory.h"

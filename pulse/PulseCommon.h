@@ -8,6 +8,7 @@
 struct pa_mainloop;
 struct pa_context;
 struct pa_mainloop_api;
+class PaContext;
 
 static constexpr std::array<unsigned int, 8> PULSE_SUPPORTED_SAMPLERATES
     = {8000, 16000, 22050, 32000, 44100, 48000, 96000, 192000};
@@ -35,20 +36,32 @@ constexpr pa_sample_format_t getPulseFormatByRt(RtAudioFormat rtf)
     return it->pa_format;
 }
 
-class PaMainloop
+struct OpaqueResultError
 {
 public:
-    PaMainloop();
-    ~PaMainloop();
-    bool isValid() const;
-    pa_mainloop *handle() const;
-
-    PaMainloop(const PaMainloop &) = delete;
-    PaMainloop &operator=(const PaMainloop &) = delete;
-
-    bool runUntil(std::function<bool()>);
+    void setError() { mError = true; }
+    void setReady() { mReady = true; }
+    bool isReady() const { return mReady; }
+    bool isError() const { return mError; }
+    bool isReadyOrError() const { return isReady() || isError(); }
 
 private:
-    pa_mainloop *mMainloop = NULL;
+    bool mReady = false;
+    bool mError = false;
 };
 
+struct ServerInfoStruct : public OpaqueResultError
+{
+    unsigned int defaultRate = 0;
+    std::string defaultSinkName;
+    std::string defaultSourceName;
+};
+
+struct ServerDevicesStruct : public OpaqueResultError
+{
+    std::vector<RtAudio::DeviceInfo> devices;
+    ServerInfoStruct serverInfo;
+};
+
+std::optional<ServerInfoStruct> getServerInfo(std::shared_ptr<PaContext> context);
+std::optional<ServerDevicesStruct> getServerDevices(std::shared_ptr<PaContext> context);

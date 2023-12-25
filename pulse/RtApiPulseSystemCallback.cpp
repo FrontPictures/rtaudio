@@ -1,4 +1,5 @@
 #include "RtApiPulseSystemCallback.h"
+#include "PaMainloop.h"
 #include "PulseCommon.h"
 #include <pulse/context.h>
 #include <pulse/def.h>

@@ -9,4 +9,5 @@ class RtApiPulseEnumerator : public RtApiEnumerator
 public:
     RtAudio::Api getCurrentApi(void) override { return RtAudio::LINUX_PULSE; }
     virtual std::vector<RtAudio::DeviceInfoPartial> listDevices(void) override;
+    virtual std::string getDefaultDevice(RtApi::StreamMode mode) override;
 };

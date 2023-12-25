@@ -1,4 +1,5 @@
 #include "PaContext.h"
+#include "PaMainloop.h"
 #include "PulseCommon.h"
 #include <cassert>
 #include <pulse/context.h>
