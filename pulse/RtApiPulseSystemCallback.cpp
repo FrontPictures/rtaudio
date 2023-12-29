@@ -1,6 +1,8 @@
 #include "RtApiPulseSystemCallback.h"
+#include "PaContextWithMainloop.h"
 #include "PaMainloop.h"
 #include "PulseCommon.h"
+#include "pulse/PaContext.h"
 #include <pulse/context.h>
 #include <pulse/def.h>
 #include <pulse/mainloop.h>
@@ -8,74 +10,11 @@
 
 namespace {
 
-void rt_pa_sink_info_cb(pa_context *c, const pa_sink_info *i, int eol, void *userdata)
+void rt_pa_context_success_cb(pa_context *c, int success, void *userdata)
 {
-    RtApiPulseSystemCallback::PaEventsUserData *opaque
-        = static_cast<RtApiPulseSystemCallback::PaEventsUserData *>(userdata);
-    if (eol)
-        return;
-    printf("Output: ");
-    opaque->callback(i->name, RtAudioDeviceParam::DEFAULT_CHANGED);
-}
-
-void rt_pa_source_info_cb(pa_context *c, const pa_source_info *i, int eol, void *userdata)
-{
-    RtApiPulseSystemCallback::PaEventsUserData *opaque
-        = static_cast<RtApiPulseSystemCallback::PaEventsUserData *>(userdata);
-    if (eol)
-        return;
-    printf("Input: ");
-    opaque->callback(i->name, RtAudioDeviceParam::DEFAULT_CHANGED);
-}
-
-void rt_pa_card_info_added_cb(pa_context *c, const pa_card_info *i, int eol, void *userdata)
-{
-    if (eol)
-        return;
-    RtApiPulseSystemCallback::PaEventsUserData *opaque
-        = static_cast<RtApiPulseSystemCallback::PaEventsUserData *>(userdata);
-    opaque->callback(i->name, RtAudioDeviceParam::DEVICE_ADDED);
-}
-
-void checkDefaultChanged(pa_context *c, uint32_t idx, unsigned int t, void *userdata)
-{
-    unsigned facility = t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK;
-    unsigned int evt = t & PA_SUBSCRIPTION_EVENT_TYPE_MASK;
-
-    switch (evt) {
-    case PA_SUBSCRIPTION_EVENT_CHANGE: {
-        switch (facility) {
-        case PA_SUBSCRIPTION_EVENT_SINK:
-            pa_context_get_sink_info_by_index(c, idx, &rt_pa_sink_info_cb, userdata);
-            break;
-        case PA_SUBSCRIPTION_EVENT_SOURCE:
-            pa_context_get_source_info_by_index(c, idx, &rt_pa_source_info_cb, userdata);
-            break;
-        default:
-            break;
-        }
-    } break;
-    default:
-        break;
-    }
-}
-
-void checkCardAddedRemoved(unsigned int t,
-                           pa_context *c,
-                           uint32_t idx,
-                           RtApiPulseSystemCallback::PaEventsUserData *userdata)
-{
-    unsigned int evt = t & PA_SUBSCRIPTION_EVENT_TYPE_MASK;
-    switch (evt) {
-    case PA_SUBSCRIPTION_EVENT_NEW:
-        pa_context_get_card_info_by_index(c, idx, &rt_pa_card_info_added_cb, userdata);
-        break;
-    case PA_SUBSCRIPTION_EVENT_REMOVE:
-        userdata->callback("", RtAudioDeviceParam::DEVICE_REMOVED);
-        break;
-    default:
-        break;
-    }
+    assert(userdata);
+    int *res = reinterpret_cast<int *>(userdata);
+    (*res) = success;
 }
 
 void pa_context_subscribe_cb(pa_context *c,
@@ -83,42 +22,9 @@ void pa_context_subscribe_cb(pa_context *c,
                              uint32_t idx,
                              void *userdata)
 {
-    auto *opaque = reinterpret_cast<RtApiPulseSystemCallback::PaEventsUserData *>(userdata);
-
-    unsigned facility = t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK;
-    switch (facility) {
-    case PA_SUBSCRIPTION_EVENT_SINK:
-    case PA_SUBSCRIPTION_EVENT_SOURCE:
-        checkDefaultChanged(c, idx, t, userdata);
-        break;
-    case PA_SUBSCRIPTION_EVENT_CARD: {
-        checkCardAddedRemoved(t, c, idx, opaque);
-    } break;
-    default:
-        break;
-    }
-}
-
-void rt_pa_context_state_callback(pa_context *context, void *userdata)
-{
-    auto *paProbeInfo = static_cast<RtApiPulseSystemCallback::PaEventsUserData *>(userdata);
-    auto state = pa_context_get_state(context);
-    pa_operation *operation = nullptr;
-    switch (state) {
-    case PA_CONTEXT_READY:
-        pa_context_set_subscribe_callback(context, pa_context_subscribe_cb, userdata);
-        operation = pa_context_subscribe(context,
-                                         static_cast<pa_subscription_mask_t>(
-                                             PA_SUBSCRIPTION_MASK_ALL),
-                                         nullptr,
-                                         nullptr);
-        if (operation) {
-            pa_operation_unref(operation);
-        }
-        break;
-    default:
-        break;
-    }
+    assert(userdata);
+    RtApiPulseSystemCallback *stream = reinterpret_cast<RtApiPulseSystemCallback *>(userdata);
+    stream->handleEvent(c, t, idx);
 }
 
 } // namespace
@@ -126,52 +32,107 @@ void rt_pa_context_state_callback(pa_context *context, void *userdata)
 RtApiPulseSystemCallback::RtApiPulseSystemCallback(RtAudioDeviceCallbackLambda callback)
     : mCallback(callback)
 {
+    mContextWithLoop = PaContextWithMainloop::Create(nullptr);
+    if (!mContextWithLoop) {
+        errorStream_ << "RtApiPulse::probeDevices: failed to create context with mainloop.";
+        error(RTAUDIO_SYSTEM_ERROR, errorStream_.str());
+        return;
+    }
+    pa_context_set_subscribe_callback(mContextWithLoop->getContext()->handle(),
+                                      pa_context_subscribe_cb,
+                                      this);
+
+    int success = 100;
+    pa_operation *operation = pa_context_subscribe(mContextWithLoop->getContext()->handle(),
+                                                   static_cast<pa_subscription_mask_t>(
+                                                       PA_SUBSCRIPTION_MASK_ALL),
+                                                   &rt_pa_context_success_cb,
+                                                   &success);
+    if (!operation)
+        return;
+    mContextWithLoop->getContext()->getMainloop()->runUntil(
+        [&]() { return mContextWithLoop->getContext()->hasError() || success != 100; });
+    pa_operation_unref(operation);
+    if (success != 1) {
+        return;
+    }
     mNotificationThread = std::thread(&RtApiPulseSystemCallback::notificationThread, this);
 }
 
 RtApiPulseSystemCallback::~RtApiPulseSystemCallback()
 {
-    mUserData.finished(0);
+    if (!mContextWithLoop) {
+        return;
+    }
+    mContextWithLoop->getContext()->getMainloop()->stop();
     mNotificationThread.join();
+    pa_context_set_subscribe_callback(mContextWithLoop->getContext()->handle(), nullptr, this);
+}
+
+void RtApiPulseSystemCallback::handleEvent(pa_context *c,
+                                           pa_subscription_event_type_t t,
+                                           uint32_t idx)
+{
+    unsigned facility = t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK;
+    switch (facility) {
+    case PA_SUBSCRIPTION_EVENT_SINK:
+    case PA_SUBSCRIPTION_EVENT_SOURCE:
+        checkDefaultChanged(c, idx, t);
+        break;
+    case PA_SUBSCRIPTION_EVENT_CARD: {
+        checkCardAddedRemoved(t, c, idx);
+    } break;
+    default:
+        break;
+    }
+}
+
+bool RtApiPulseSystemCallback::hasError() const
+{
+    return mHasError;
 }
 
 void RtApiPulseSystemCallback::notificationThread()
 {
-    PaMainloop ml;
-    if (ml.isValid() == false) {
-        errorStream_ << "RtApiPulse::probeDevices: pa_mainloop_new() failed.";
-        error(RTAUDIO_WARNING, errorStream_.str());
-        return;
-    }
-
-    /*PaContext context(pa_mainloop_get_api(ml.handle()));
-    if (context.isValid() == false) {
-        errorStream_ << "RtApiPulse::probeDevices: pa_context_new() failed.";
-        error(RTAUDIO_WARNING, errorStream_.str());
-        return;
-    }*/
-    //init(ml.handle(), context.handle());
-    return;
+    auto res = mContextWithLoop->getContext()->getMainloop()->runUntil(
+        [this]() { return mContextWithLoop->getContext()->hasError(); });
+    mHasError = true;
 }
 
-bool RtApiPulseSystemCallback::init(pa_mainloop *ml, pa_context *context)
+void RtApiPulseSystemCallback::checkCardAddedRemoved(unsigned int t, pa_context *c, uint32_t idx)
 {
-    int ret = 1;
-    mUserData.callback = mCallback;
-    mUserData.setMainloop(ml);
-    if (mUserData.isValid() == false) {
-        error(RTAUDIO_WARNING, "RtApiPulseSystemCallback::init: user data not valid.");
-        return false;
+    unsigned int evt = t & PA_SUBSCRIPTION_EVENT_TYPE_MASK;
+    switch (evt) {
+    case PA_SUBSCRIPTION_EVENT_NEW:
+        mCallback("", RtAudioDeviceParam::DEVICE_ADDED);
+        break;
+    case PA_SUBSCRIPTION_EVENT_REMOVE:
+        mCallback("", RtAudioDeviceParam::DEVICE_REMOVED);
+        break;
+    case PA_SUBSCRIPTION_EVENT_CHANGE:
+        mCallback("", RtAudioDeviceParam::DEVICE_STATE_CHANGED);
+        break;
+    default:
+        break;
     }
+}
 
-    mMainloopRunning = std::make_unique<PaMainloopRunning>(ml,
-                                                           context,
-                                                           rt_pa_context_state_callback,
-                                                           &mUserData);
+void RtApiPulseSystemCallback::checkDefaultChanged(pa_context *c, uint32_t idx, unsigned int t)
+{
+    unsigned facility = t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK;
+    unsigned int evt = t & PA_SUBSCRIPTION_EVENT_TYPE_MASK;
 
-    if (mMainloopRunning->run() != RTAUDIO_NO_ERROR) {
-        error(RTAUDIO_WARNING, "RtApiPulse::probeDevices: could not get server info.");
-        return false;
+    switch (evt) {
+    case PA_SUBSCRIPTION_EVENT_CHANGE: {
+        printf("Sink/source changed\n");
+    } break;
+    case PA_SUBSCRIPTION_EVENT_NEW: {
+        printf("Sink/source new\n");
+    } break;
+    case PA_SUBSCRIPTION_EVENT_REMOVE: {
+        printf("Sink/source remove\n");
+    } break;
+    default:
+        break;
     }
-    return true;
 }

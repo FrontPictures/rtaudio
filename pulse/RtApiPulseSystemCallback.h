@@ -1,13 +1,12 @@
 #pragma once
 
 #include "RtAudio.h"
-#include "pulse/PaMainloopRunning.h"
 #include <optional>
+#include <pulse/def.h>
 #include <thread>
 
-struct pa_mainloop;
 struct pa_context;
-struct pa_mainloop_api;
+class PaContextWithMainloop;
 
 class RTAUDIO_DLL_PUBLIC RtApiPulseSystemCallback : public RtApiSystemCallback
 {
@@ -16,18 +15,18 @@ public:
     ~RtApiPulseSystemCallback();
 
     virtual RtAudio::Api getCurrentApi(void) override { return RtAudio::LINUX_PULSE; }
+    void handleEvent(pa_context *c, pa_subscription_event_type_t t, uint32_t idx);
 
-    struct PaEventsUserData : public PaMainloopRunningUserdata
-    {
-        RtAudioDeviceCallbackLambda callback = nullptr;
-    };
+    virtual bool hasError() const override;
 
 private:
     void notificationThread();
-    bool init(pa_mainloop *ml, pa_context *context);
 
-    PaEventsUserData mUserData;
-    std::unique_ptr<PaMainloopRunning> mMainloopRunning;
+    void checkCardAddedRemoved(unsigned int t, pa_context *c, uint32_t idx);
+    void checkDefaultChanged(pa_context *c, uint32_t idx, unsigned int t);
+
     std::thread mNotificationThread;
     RtAudioDeviceCallbackLambda mCallback;
+    std::shared_ptr<PaContextWithMainloop> mContextWithLoop;
+    std::atomic_bool mHasError = false;
 };

@@ -1,18 +1,24 @@
 #include "RtApiPulseStream.h"
+#include "pulse/PaContext.h"
+#include "pulse/PaContextWithMainloop.h"
+#include "pulse/PaMainloop.h"
+#include "pulse/PaStream.h"
+#include <cassert>
 
-RtApiPulseStream::RtApiPulseStream(RtApi::RtApiStream stream, pa_simple *handle)
-    : mThread(std::bind(&RtApiPulseStream::processAudio, this),
-              stream.callbackInfo.doRealtime,
-              stream.callbackInfo.priority)
-    , RtApiStreamClass(stream)
-    , mHandle(handle)
-{}
+RtApiPulseStream::RtApiPulseStream(RtApi::RtApiStream apiStream,
+                                   std::shared_ptr<PaContextWithMainloop> contextMainloop,
+                                   std::shared_ptr<PaStream> stream)
+    : RtApiStreamClass(apiStream)
+    , mContextMainloop(contextMainloop)
+    , mStream(stream)
+    , mThread([this]() { return threadMethod(); })
+{
+    mStream->setStreamRequest([this](size_t nbytes) { processAudio(nbytes); });
+}
 
 RtApiPulseStream::~RtApiPulseStream()
 {
     stopStreamPriv();
-    if (mHandle)
-        pa_simple_free(mHandle);
 }
 
 RtAudioErrorType RtApiPulseStream::startStream()
@@ -20,7 +26,7 @@ RtAudioErrorType RtApiPulseStream::startStream()
     if (stream_.state != RtApi::STREAM_STOPPED) {
         return RTAUDIO_SYSTEM_ERROR;
     }
-    if (mThread.isValid() == false) {
+    if (mStream->play() == false) {
         return RTAUDIO_SYSTEM_ERROR;
     }
     mThread.resume();
@@ -33,20 +39,36 @@ RtAudioErrorType RtApiPulseStream::stopStream()
     return stopStreamPriv();
 }
 
+bool RtApiPulseStream::threadMethod()
+{
+    auto loop = mContextMainloop->getContext()->getMainloop();
+    if (loop->iterateBlocking() == false)
+        return false;
+
+    bool errorInAudiothread = false;
+    errorInAudiothread = mContextMainloop->getContext()->hasError();
+    errorInAudiothread = errorInAudiothread || mStream->hasError();
+    if (errorInAudiothread) {
+        stream_.errorState = true;
+        return false;
+    }
+    return true;
+}
+
 RtAudioErrorType RtApiPulseStream::stopStreamPriv()
 {
     if (stream_.state != RtApi::STREAM_RUNNING) {
         return RTAUDIO_SYSTEM_ERROR;
     }
-    if (mThread.isValid() == false) {
+    mThread.suspend();
+    if (mStream->pause() == false) {
         return RTAUDIO_SYSTEM_ERROR;
     }
-    mThread.suspend();
     stream_.state = RtApi::STREAM_STOPPED;
     return RTAUDIO_NO_ERROR;
 }
 
-bool RtApiPulseStream::processOutput()
+bool RtApiPulseStream::processOutput(size_t nsamples)
 {
     int pa_error = 0;
     size_t bytes = 0;
@@ -59,73 +81,98 @@ bool RtApiPulseStream::processOutput()
                              stream_.deviceBuffer.get(),
                              stream_.userBuffer[RtApi::OUTPUT].get(),
                              stream_.convertInfo[RtApi::OUTPUT],
-                             stream_.bufferSize,
+                             nsamples,
                              RtApi::OUTPUT);
-        bytes = stream_.nDeviceChannels[RtApi::OUTPUT] * stream_.bufferSize
+        bytes = stream_.nDeviceChannels[RtApi::OUTPUT] * nsamples
                 * RtApi::formatBytes(stream_.deviceFormat[RtApi::OUTPUT]);
     } else
-        bytes = stream_.nUserChannels[RtApi::OUTPUT] * stream_.bufferSize
+        bytes = stream_.nUserChannels[RtApi::OUTPUT] * nsamples
                 * RtApi::formatBytes(stream_.userFormat);
 
-    auto res = pa_simple_write(mHandle, pulse_out, bytes, &pa_error);
-    if (res < 0) {
-        stream_.state = RtApi::STREAM_ERROR;
+    if (mStream->writeData(pulse_out, bytes) == false) {
+        stream_.errorState = true;
         return false;
     }
     return true;
 }
 
-bool RtApiPulseStream::processInput()
+const void *RtApiPulseStream::processInput(size_t *nSamplesOut, size_t *nbytes)
 {
-    int pa_error = 0;
-    size_t bytes = 0;
-    void *pulse_in = stream_.doConvertBuffer[RtApi::INPUT] ? stream_.deviceBuffer.get()
-                                                           : stream_.userBuffer[RtApi::INPUT].get();
-
-    if (stream_.doConvertBuffer[RtApi::INPUT])
-        bytes = stream_.nDeviceChannels[RtApi::INPUT] * stream_.bufferSize
-                * RtApi::formatBytes(stream_.deviceFormat[RtApi::INPUT]);
-    else
-        bytes = stream_.nUserChannels[RtApi::INPUT] * stream_.bufferSize
-                * RtApi::formatBytes(stream_.userFormat);
-
-    if (pa_simple_read(mHandle, pulse_in, bytes, &pa_error) < 0) {
-        stream_.state = RtApi::STREAM_ERROR;
-        return false;
+    const void *data = nullptr;
+    size_t readDataSize = mStream->peakData(&data);
+    if (readDataSize == 0) {
+        return nullptr;
     }
+
+    size_t bufferSize = 0;
+    bufferSize = readDataSize / stream_.nDeviceChannels[RtApi::INPUT]
+                 / RtApi::formatBytes(stream_.deviceFormat[RtApi::INPUT]);
+
+    (*nSamplesOut) = bufferSize;
+    (*nbytes) = readDataSize;
     if (stream_.doConvertBuffer[RtApi::INPUT]) {
         RtApi::convertBuffer(stream_,
                              stream_.userBuffer[RtApi::INPUT].get(),
-                             stream_.deviceBuffer.get(),
+                             reinterpret_cast<const char *>(data),
                              stream_.convertInfo[RtApi::INPUT],
                              stream_.bufferSize,
                              RtApi::INPUT);
+        return stream_.userBuffer[RtApi::INPUT].get();
+    } else {
+        return data;
     }
-    return true;
 }
 
-bool RtApiPulseStream::processAudio()
+bool RtApiPulseStream::processAudio(size_t nbytes)
 {
     RtAudioCallback callback = (RtAudioCallback) stream_.callbackInfo.callback;
     double streamTime = getStreamTime();
     RtAudioStreamStatus status = 0;
 
     if (stream_.mode == RtApi::INPUT) {
-        if (!processInput())
+        size_t bufferSize = 0;
+        size_t nbytesInput = 0;
+        const void *dataIn = processInput(&bufferSize, &nbytesInput);
+        assert(nbytesInput == nbytes);
+        if (nbytesInput != nbytes)
             return false;
-    }
 
-    callback(stream_.userBuffer[RtApi::OUTPUT].get(),
-             stream_.userBuffer[RtApi::INPUT].get(),
-             stream_.bufferSize,
-             streamTime,
-             status,
-             stream_.callbackInfo.userData);
-
-    if (stream_.mode == RtApi::OUTPUT) {
-        if (!processOutput())
+        if (!dataIn || bufferSize == 0)
             return false;
+        size_t samplesProcessed = 0;
+        while (samplesProcessed != bufferSize) {
+            size_t samplesToProcess = std::min(bufferSize - samplesProcessed,
+                                               (size_t) stream_.bufferSize);
+            callback(nullptr,
+                     reinterpret_cast<const char *>(dataIn) + samplesProcessed,
+                     samplesToProcess,
+                     streamTime,
+                     status,
+                     stream_.callbackInfo.userData);
+            tickStreamTime();
+            samplesProcessed += samplesToProcess;
+        }
+        mStream->dropData();
+    } else {
+        size_t bufferSize = 0;
+        bufferSize = nbytes / stream_.nDeviceChannels[RtApi::OUTPUT]
+                     / RtApi::formatBytes(stream_.deviceFormat[RtApi::OUTPUT]);
+
+        size_t samplesProcessed = 0;
+        while (samplesProcessed != bufferSize) {
+            size_t samplesToProcess = std::min(bufferSize - samplesProcessed,
+                                               (size_t) stream_.bufferSize);
+            callback(stream_.userBuffer[RtApi::OUTPUT].get(),
+                     nullptr,
+                     samplesToProcess,
+                     streamTime,
+                     status,
+                     stream_.callbackInfo.userData);
+            if (!processOutput(samplesToProcess))
+                return false;
+            tickStreamTime();
+            samplesProcessed += samplesToProcess;
+        }
     }
-    tickStreamTime();
     return true;
 }

@@ -67,8 +67,12 @@ std::shared_ptr<PaMainloop> PaContext::getMainloop() const
 
 PaContext::~PaContext()
 {
-    if (mContext)
-        pa_context_unref(mContext);
+    if (!mContext) {
+        return;
+    }
+    pa_context_set_state_callback(mContext, nullptr, this);
+    pa_context_disconnect(mContext);
+    pa_context_unref(mContext);
 }
 
 bool PaContext::isValid() const

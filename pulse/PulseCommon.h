@@ -39,11 +39,12 @@ constexpr pa_sample_format_t getPulseFormatByRt(RtAudioFormat rtf)
 struct OpaqueResultError
 {
 public:
-    void setError() { mError = true; }
-    void setReady() { mReady = true; }
+    void setError();
+    void setReady();
     bool isReady() const { return mReady; }
     bool isError() const { return mError; }
     bool isReadyOrError() const { return isReady() || isError(); }
+    void setWaiting();
 
 private:
     bool mReady = false;
@@ -65,3 +66,4 @@ struct ServerDevicesStruct : public OpaqueResultError
 
 std::optional<ServerInfoStruct> getServerInfo(std::shared_ptr<PaContext> context);
 std::optional<ServerDevicesStruct> getServerDevices(std::shared_ptr<PaContext> context);
+std::string getProfileNameForSink(std::shared_ptr<PaContext> context, std::string busId);

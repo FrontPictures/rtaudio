@@ -222,11 +222,12 @@ static const RtAudioStreamStatus RTAUDIO_OUTPUT_UNDERFLOW = 0x2;  // The output 
    output buffer, the function should return a value of one.  To abort
    the stream immediately, the client should return a value of two.
  */
-typedef int (*RtAudioCallback)(void* outputBuffer, void* inputBuffer,
-    unsigned int nFrames,
-    double streamTime,
-    RtAudioStreamStatus status,
-    void* userData);
+typedef int (*RtAudioCallback)(void *outputBuffer,
+                               const void *inputBuffer,
+                               unsigned int nFrames,
+                               double streamTime,
+                               RtAudioStreamStatus status,
+                               void *userData);
 
 enum RtAudioDeviceParam {
     DEFAULT_CHANGED,
@@ -571,7 +572,12 @@ public:
     };
 
     static unsigned int formatBytes(RtAudioFormat format);
-    static void convertBuffer(const RtApi::RtApiStream stream_, char* outBuffer, char* inBuffer, RtApi::ConvertInfo info, unsigned int samples, RtApi::StreamMode mode);
+    static void convertBuffer(const RtApi::RtApiStream stream_,
+                              char *outBuffer,
+                              const char *inBuffer,
+                              RtApi::ConvertInfo info,
+                              unsigned int samples,
+                              RtApi::StreamMode mode);
     static void byteSwapBuffer(char* buffer, unsigned int samples, RtAudioFormat format);
     static void setConvertInfo(RtApi::StreamMode mode, RtApi::RtApiStream& stream_);
 };
@@ -618,6 +624,7 @@ public:
     RtApiSystemCallback() {}
     virtual ~RtApiSystemCallback() {}
     virtual RtAudio::Api getCurrentApi(void) = 0;
+    virtual bool hasError() const { return false; }
 };
 
 class RTAUDIO_DLL_PUBLIC RtApiStreamClass : public ErrorBase {

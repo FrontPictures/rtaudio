@@ -154,11 +154,11 @@ if (RTAUDIO_API_PULSE)
   "pulse/PaMainloop.cpp" "pulse/PaMainloop.h"
   "pulse/PaContextWithMainloop.cpp" "pulse/PaContextWithMainloop.h"
   "pulse/PaContext.cpp" "pulse/PaContext.h"
+  "pulse/PaStream.cpp" "pulse/PaStream.h"
   "pulse/RtApiPulseProber.cpp" "pulse/RtApiPulseProber.h"
   "pulse/RtApiPulseStreamFactory.cpp" "pulse/RtApiPulseStreamFactory.h"
   "pulse/RtApiPulseStream.cpp" "pulse/RtApiPulseStream.h"
-  "pulse/RtApiPulseSystemCallback.cpp" "pulse/RtApiPulseSystemCallback.h"
-  "pulse/PaMainloopRunning.cpp" "pulse/PaMainloopRunning.h")
+  "pulse/RtApiPulseSystemCallback.cpp" "pulse/RtApiPulseSystemCallback.h")
 endif()
 
 # CoreAudio

@@ -31,10 +31,13 @@ struct UserData {
     bool filled = false;
 };
 
-
-
-int playbackAudioCallback(void* outputBuffer, void* inputBuffer, unsigned int nBufferFrames,
-    double streamTime, RtAudioStreamStatus status, void* data) {
+int playbackAudioCallback(void *outputBuffer,
+                          const void *inputBuffer,
+                          unsigned int nBufferFrames,
+                          double streamTime,
+                          RtAudioStreamStatus status,
+                          void *data)
+{
     UserData* userData = static_cast<UserData*>(data);
     std::lock_guard<std::mutex> g(userData->mut);
     if (userData->filled == false) {
@@ -54,10 +57,14 @@ int playbackAudioCallback(void* outputBuffer, void* inputBuffer, unsigned int nB
     return 0;
 }
 
-int captureAudioCallback(void* outputBuffer, void* inputBuffer, unsigned int nBufferFrames,
-    double streamTime, RtAudioStreamStatus status, void* data) {
-
-    UserData* userData = static_cast<UserData*>(data);
+int captureAudioCallback(void *outputBuffer,
+                         const void *inputBuffer,
+                         unsigned int nBufferFrames,
+                         double streamTime,
+                         RtAudioStreamStatus status,
+                         void *data)
+{
+    UserData *userData = static_cast<UserData *>(data);
     std::lock_guard<std::mutex> g(userData->mut);
     if (!userData->ringbuffer.WriteAvailable(nBufferFrames * userData->channels)) {
         return 0;
@@ -66,8 +73,8 @@ int captureAudioCallback(void* outputBuffer, void* inputBuffer, unsigned int nBu
     return 0;
 }
 
-
-struct AudioParamsCapture {
+struct AudioParamsCapture
+{
     RtAudio::Api api = RtAudio::Api::UNSPECIFIED;
     std::string busID;
     int channels = 0;
@@ -120,6 +127,9 @@ bool capture_audio(AudioParamsCapture params) {
             SLEEP(10);
         }
         start_time = std::chrono::high_resolution_clock::now();
+        if (stream->isStreamRunning() == false) {
+            std::cout << "\nError while stream recording\n";
+        }
     }
     return true;
 }

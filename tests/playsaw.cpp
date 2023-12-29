@@ -59,8 +59,13 @@ struct UserData {
     RtAudioFormat format = 0;
 };
 
-int produceAudio(void* outputBuffer, void* /*inputBuffer*/, unsigned int nBufferFrames,
-    double streamTime, RtAudioStreamStatus status, void* data) {
+int produceAudio(void *outputBuffer,
+                 const void * /*inputBuffer*/,
+                 unsigned int nBufferFrames,
+                 double streamTime,
+                 RtAudioStreamStatus status,
+                 void *data)
+{
     UserData* userData = (UserData*)data;
     std::vector<void*> buffers;
     if (userData->interleaved) {
@@ -246,13 +251,20 @@ int main(int argc, char* argv[])
                 continue;
             }
             std::cout << "\nStream created! Buffer size: " << stream->getBufferSize() << "\n";
-            stream->startStream();
+            if (stream->startStream() != RTAUDIO_NO_ERROR) {
+                std::cout << "\nStream start error\n";
+                continue;
+            }
             auto start_time = std::chrono::high_resolution_clock::now();
-
-            auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time).count();
+            auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                  std::chrono::high_resolution_clock::now() - start_time)
+                                  .count();
             while (stream->isStreamRunning() && elapsed_ms < durationMs) {
                 elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time).count();
                 SLEEP(100);
+            }
+            if (stream->isStreamRunning() == false) {
+                std::cout << "\nError while playing stream!\n";
             }
             stream->stopStream();
             iter++;

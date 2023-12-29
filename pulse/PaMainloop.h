@@ -15,7 +15,10 @@ public:
     PaMainloop &operator=(const PaMainloop &) = delete;
 
     bool runUntil(std::function<bool()>);
+    bool iterateBlocking();
+    bool stop();
 
 private:
+    bool mErrorWhileRunning = false;
     pa_mainloop *mMainloop = NULL;
 };

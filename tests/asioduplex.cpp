@@ -19,8 +19,13 @@ struct UserData {
     unsigned int channels = 0;
 };
 
-int audioCallback(void* outputBuffer, void* inputBuffer, unsigned int nBufferFrames,
-    double streamTime, RtAudioStreamStatus status, void* data) {
+int audioCallback(void *outputBuffer,
+                  const void *inputBuffer,
+                  unsigned int nBufferFrames,
+                  double streamTime,
+                  RtAudioStreamStatus status,
+                  void *data)
+{
     UserData* userData = static_cast<UserData*>(data);
     if (!inputBuffer || !outputBuffer)
         return 0;

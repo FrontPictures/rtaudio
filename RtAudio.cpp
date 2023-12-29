@@ -393,7 +393,12 @@ std::shared_ptr<RtApiSystemCallback> RtAudio::GetRtAudioSystemCallback(RtAudio::
     return {};
 }
 
-void RtApi::convertBuffer(const RtApi::RtApiStream stream_, char* outBuffer, char* inBuffer, RtApi::ConvertInfo info, unsigned int samples, RtApi::StreamMode mode)
+void RtApi::convertBuffer(const RtApi::RtApiStream stream_,
+                          char *outBuffer,
+                          const char *inBuffer,
+                          RtApi::ConvertInfo info,
+                          unsigned int samples,
+                          RtApi::StreamMode mode)
 {
     typedef S24 Int24;
     typedef signed short Int16;

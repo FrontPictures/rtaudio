@@ -1,7 +1,8 @@
 #include "RtAudio.h"
 #include <thread>
 
-void usage(void) {
+void usage(void)
+{
     // Error function in case of incorrect command-line
     // argument specifications
     std::cout << "\nuseage: audioevents apiname <duration>\n";
@@ -10,9 +11,9 @@ void usage(void) {
     exit(0);
 }
 
-std::string DeviceParamToString(RtAudioDeviceParam param) {
-    switch (param)
-    {
+std::string DeviceParamToString(RtAudioDeviceParam param)
+{
+    switch (param) {
     case DEFAULT_CHANGED:
         return "DEFAULT_CHANGED";
     case DEVICE_ADDED:
@@ -27,8 +28,10 @@ std::string DeviceParamToString(RtAudioDeviceParam param) {
         return "NONE";
     }
 }
-int main(int argc, char* argv[]) {
-    if (argc != 2 && argc != 3) usage();
+int main(int argc, char *argv[])
+{
+    if (argc != 2 && argc != 3)
+        usage();
     auto api = RtAudio::getCompiledApiByName(argv[1]);
     int durationSecs = INT_MAX;
     if (argc == 3) {
@@ -40,14 +43,39 @@ int main(int argc, char* argv[]) {
     }
     std::cout << "\nWaiting for events\n";
     {
-        auto systemCallbacks = RtAudio::GetRtAudioSystemCallback(api, [](const std::string& busId, RtAudioDeviceParam param) {
-            std::cout << DeviceParamToString(param) << " : " << busId << std::endl;
-            });
+        auto systemCallbacks = RtAudio::GetRtAudioSystemCallback(api,
+                                                                 [](const std::string &busId,
+                                                                    RtAudioDeviceParam param) {
+                                                                     std::cout
+                                                                         << DeviceParamToString(
+                                                                                param)
+                                                                         << " : " << busId
+                                                                         << std::endl;
+                                                                 });
         if (!systemCallbacks) {
             std::cout << "No audio system events" << std::endl;
             return 1;
         }
-        std::this_thread::sleep_for(std::chrono::seconds(durationSecs));
+        if (systemCallbacks->hasError()) {
+            std::cout << "Error in systems callback on start" << std::endl;
+            return 1;
+        }
+
+        auto startTime = std::chrono::high_resolution_clock::now();
+
+        while (1) {
+            if (systemCallbacks->hasError()) {
+                std::cout << "Has error in system callbacks" << std::endl;
+                break;
+            }
+            auto elapsedMs = std::chrono::duration_cast<std::chrono::seconds>(
+                                 std::chrono::high_resolution_clock::now() - startTime)
+                                 .count();
+            if (elapsedMs >= durationSecs) {
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
     }
     std::cout << "\nFinished receiving events\n";
     return 0;

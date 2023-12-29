@@ -44,14 +44,14 @@ void listDevices(std::shared_ptr<RtApiEnumerator> enumerator)
 
     auto prober = RtAudio::GetRtAudioProber(enumerator->getCurrentApi());
     if (!prober) {
-        std::cout << "\Failed to get prober" << std::endl;
+        std::cout << "\nFailed to get prober" << std::endl;
         return;
     }
 
     for (auto& d : devices) {
         auto info_opt = prober->probeDevice(d.busID);
         if (!info_opt) {
-            std::cout << "\Failed to probe " << d.name << std::endl;
+            std::cout << "\nFailed to probe " << d.name << std::endl;
             continue;
         }
         auto info = info_opt.value();
