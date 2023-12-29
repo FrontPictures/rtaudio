@@ -23,7 +23,7 @@ void rt_pa_set_server_info_cb2(pa_context *, const pa_server_info *info, void *u
     assert(userdata);
     auto *serverInfo = reinterpret_cast<ServerInfoStruct *>(userdata);
     if (!info) {
-        serverInfo->setError();
+        serverInfo->setReady();
         return;
     }
     serverInfo->defaultRate = info->sample_spec.rate;
@@ -150,9 +150,7 @@ uint32_t getSinkCardId(std::shared_ptr<PaContext> context, std::string busId)
     if (!oper)
         return PA_INVALID_INDEX;
     context->getMainloop()->runUntil(
-        [&]() { return devicesStruct.isReadyOrError() || context->hasError(); });
-    if (devicesStruct.isError())
-        return PA_INVALID_INDEX;
+        [&]() { return devicesStruct.isReady() || context->hasError(); });
     return devicesStruct.card;
 }
 } // namespace
@@ -170,7 +168,7 @@ std::optional<ServerInfoStruct> getServerInfo(std::shared_ptr<PaContext> context
     if (!o) {
         return {};
     }
-    loop->runUntil([&]() { return res.isReadyOrError() || context->hasError(); });
+    loop->runUntil([&]() { return res.isReady() || context->hasError(); });
     pa_operation_unref(o);
     if (res.isReady() == false) {
         return {};
@@ -199,7 +197,7 @@ std::optional<ServerDevicesStruct> getServerDevices(std::shared_ptr<PaContext> c
                                                                 &res);
 
     if (operSinks && operSources) {
-        loop->runUntil([&]() { return res.isReadyOrError() || context->hasError(); });
+        loop->runUntil([&]() { return res.isReady() || context->hasError(); });
     }
 
     if (operSinks) {
@@ -227,17 +225,9 @@ std::string getProfileNameForSink(std::shared_ptr<PaContext> context, std::strin
                                                            &profile);
     if (!oper)
         return {};
-    context->getMainloop()->runUntil(
-        [&]() { return profile.isReadyOrError() || context->hasError(); });
-    pa_operation_unref(oper);
-    if (profile.isError())
-        return {};
+    context->getMainloop()->runUntil([&]() { return profile.isReady() || context->hasError(); });
+    pa_operation_unref(oper);    
     return profile.profile;
-}
-
-void OpaqueResultError::setError()
-{
-    mError = true;
 }
 
 void OpaqueResultError::setReady()

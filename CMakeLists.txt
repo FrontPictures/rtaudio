@@ -158,7 +158,8 @@ if (RTAUDIO_API_PULSE)
   "pulse/RtApiPulseProber.cpp" "pulse/RtApiPulseProber.h"
   "pulse/RtApiPulseStreamFactory.cpp" "pulse/RtApiPulseStreamFactory.h"
   "pulse/RtApiPulseStream.cpp" "pulse/RtApiPulseStream.h"
-  "pulse/RtApiPulseSystemCallback.cpp" "pulse/RtApiPulseSystemCallback.h")
+  "pulse/RtApiPulseSystemCallback.cpp" "pulse/RtApiPulseSystemCallback.h"
+  "pulse/PulsePortProvider.cpp" "pulse/PulsePortProvider.h")
 endif()
 
 # CoreAudio

@@ -23,3 +23,7 @@ target_link_libraries(audioevents ${LIBRTAUDIO} ${LINKLIBS})
 add_executable(defaultdevice defaultdevice.cpp)
 target_link_libraries(defaultdevice ${LIBRTAUDIO} ${LINKLIBS})
 
+if (RTAUDIO_API_PULSE)
+add_executable(pulseports pulseports.cpp)
+target_link_libraries(pulseports ${LIBRTAUDIO} ${LINKLIBS})
+endif()
