@@ -89,10 +89,55 @@ private:
     std::vector<PulseSinkSourceInfo> infos;
 };
 
+struct RtPaCardInfoUserdata : public OpaqueResultError
+{
+public:
+    std::vector<PulseCardInfo> getInfos() const { return infos; }
+    bool addInfo(const pa_card_info *i, int eol)
+    {
+        if (eol) {
+            setReady();
+            return true;
+        }
+        if (!i)
+            return false;
+        PulseCardInfo info;
+        info.index = i->index;
+        info.name = i->name;
+        info.driver = i->driver;
+
+        for (int n = 0; n < i->n_profiles; n++) {
+            auto *p = i->profiles2[n];
+            PulseProfileInfo profile;
+            profile.name = p->name;
+            profile.description = p->description;
+            profile.priority = p->priority;
+            if (p == i->active_profile2) {
+                profile.active = true;
+            } else {
+                profile.active = false;
+            }
+            info.profiles.push_back(profile);
+        }
+        infos.push_back(info);
+        return true;
+    }
+
+private:
+    std::vector<PulseCardInfo> infos;
+};
+
 void rt_pa_sink_info_cb(pa_context *c, const pa_sink_info *i, int eol, void *userdata)
 {
     assert(userdata);
     auto *ud = reinterpret_cast<RtPaSinkInfoCallbackUserdata *>(userdata);
+    ud->addInfo(i, eol);
+}
+
+void rt_pa_card_info_cb(pa_context *c, const pa_card_info *i, int eol, void *userdata)
+{
+    assert(userdata);
+    auto *ud = reinterpret_cast<RtPaCardInfoUserdata *>(userdata);
     ud->addInfo(i, eol);
 }
 
@@ -112,8 +157,8 @@ void rt_pa_context_success_cb(pa_context *c, int success, void *userdata)
 }
 } // namespace
 
-std::optional<std::vector<PulsePortInfo> > PulsePortProvider::getPortsForDevice(
-    std::string deviceId, PulseSinkSourceType type)
+std::optional<PulseSinkSourceInfo> PulsePortProvider::getSinkSourceInfo(std::string deviceId,
+                                                                        PulseSinkSourceType type)
 {
     RtPaSinkInfoCallbackUserdata userd;
 
@@ -142,7 +187,31 @@ std::optional<std::vector<PulsePortInfo> > PulsePortProvider::getPortsForDevice(
         return {};
     }
     auto info = infos[0];
-    return info.ports;
+    return info;
+}
+
+std::optional<PulseCardInfo> PulsePortProvider::getCardInfoById(uint32_t id)
+{
+    RtPaCardInfoUserdata userd;
+    pa_operation *oper = nullptr;
+    oper = pa_context_get_card_info_by_index(mContext->getContext()->handle(),
+                                             id,
+                                             rt_pa_card_info_cb,
+                                             &userd);
+    if (!oper)
+        return {};
+    mContext->getContext()->getMainloop()->runUntil([&]() {
+        auto state = pa_operation_get_state(oper);
+        return userd.isReady() || mContext->getContext()->hasError()
+               || state != PA_OPERATION_RUNNING;
+    });
+    pa_operation_unref(oper);
+    auto infos = userd.getInfos();
+    if (infos.size() != 1) {
+        return {};
+    }
+    auto info = infos[0];
+    return info;
 }
 
 bool PulsePortProvider::setPortForDevice(std::string deviceId,

@@ -13,11 +13,11 @@ public:
     static std::shared_ptr<PulsePortProvider> Create();
 
     ~PulsePortProvider();
-    std::optional<std::vector<PulsePortInfo>> getPortsForDevice(std::string deviceId,
-                                                                PulseSinkSourceType type);
+    std::optional<PulseSinkSourceInfo> getSinkSourceInfo(std::string deviceId,
+                                                         PulseSinkSourceType type);
+    std::optional<PulseCardInfo> getCardInfoById(uint32_t id);
 
     bool setPortForDevice(std::string deviceId, PulseSinkSourceType type, std::string portName);
-
     bool hasError() const;
 
 private:

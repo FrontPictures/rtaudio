@@ -22,17 +22,46 @@ int main(int argc, char **argv)
 
     auto pulsePorts = PulsePortProvider::Create();
     while (1) {
-        auto ports = pulsePorts->getPortsForDevice(dev, PulseSinkSourceType::SINK);
-        if (ports.has_value() == false) {
+        auto info = pulsePorts->getSinkSourceInfo(dev, PulseSinkSourceType::SINK);
+        if (info.has_value() == false) {
             fprintf(stderr, "Ports error\n");
             break;
         }
-        fprintf(stderr, "Ports %zu\n", ports->size());
+        auto cardInfo = pulsePorts->getCardInfoById(info->card);
+        if (cardInfo.has_value() == false) {
+            fprintf(stderr, "Get card info error\n");
+            break;
+        }
+
+        fprintf(stderr, "Name: %s\n", info->name.c_str());
+        fprintf(stderr, "Desc: %s\n", info->description.c_str());
+        fprintf(stderr, "Ports %zu\n", info->ports.size());
+
+        for (auto &p : info->ports) {
+            fprintf(stderr, "----------\n");
+            fprintf(stderr, "Name: %s\n", p.name.c_str());
+            fprintf(stderr, "Desc: %s\n", p.desc.c_str());
+            fprintf(stderr, "Avail: %d\n", p.available);
+            fprintf(stderr, "Active: %d\n", p.active);
+        }
+
+        fprintf(stderr, "\nCard\n");
+        fprintf(stderr, "Name: %s\n", cardInfo->name.c_str());
+        fprintf(stderr, "Profiles: %zu\n", cardInfo->profiles.size());
+
+        for (auto &p : cardInfo->profiles) {
+            fprintf(stderr, "----------\n");
+            fprintf(stderr, "Name: %s\n", p.name.c_str());
+            fprintf(stderr, "Desc: %s\n", p.description.c_str());
+            fprintf(stderr, "Active: %d\n", p.active);
+        }
+
         if (pulsePorts->hasError()) {
             fprintf(stderr, "Has error\n");
             break;
         }
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        fprintf(stderr, "----------\n\n\n");
+        std::this_thread::sleep_for(std::chrono::seconds(100));
     }
     return 0;
 }
