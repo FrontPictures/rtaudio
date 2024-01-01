@@ -151,6 +151,7 @@ if (RTAUDIO_API_PULSE)
   list(APPEND API_LIST "pulse")
   list(APPEND rtaudio_SOURCES "pulse/RtApiPulseEnumerator.cpp" "pulse/RtApiPulseEnumerator.h"
   "pulse/PulseCommon.cpp" "pulse/PulseCommon.h"
+  "pulse/PulseDataStructs.h"
   "pulse/PaMainloop.cpp" "pulse/PaMainloop.h"
   "pulse/PaContextWithMainloop.cpp" "pulse/PaContextWithMainloop.h"
   "pulse/PaContext.cpp" "pulse/PaContext.h"
@@ -308,6 +309,12 @@ install(TARGETS ${LIB_TARGETS}
 # Install public header files
 install(FILES RtAudio.h rtaudio_c.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rtaudio)
+
+if (RTAUDIO_API_PULSE)
+install(FILES pulse/PulsePortProvider.h
+              pulse/PulseDataStructs.h
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rtaudio)
+endif()
 
 # Store the package in the user registry.
 export(PACKAGE RtAudio)

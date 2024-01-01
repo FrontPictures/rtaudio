@@ -1,11 +1,12 @@
 #pragma once
-#include "PulseCommon.h"
+#include "PulseDataStructs.h"
+#include "RtAudio.h"
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 class PaContextWithMainloop;
-class PaMainloop;
 
 class RTAUDIO_DLL_PUBLIC PulsePortProvider
 {

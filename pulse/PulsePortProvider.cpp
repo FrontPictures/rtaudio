@@ -1,5 +1,6 @@
 #include "PulsePortProvider.h"
 #include "PaContextWithMainloop.h"
+#include "PulseCommon.h"
 #include "pulse/PaContext.h"
 #include "pulse/PaMainloop.h"
 #include "pulse/introspect.h"
