@@ -40,6 +40,7 @@ constexpr pa_sample_format_t getPulseFormatByRt(RtAudioFormat rtf)
 struct OpaqueResultError
 {
 public:
+    virtual ~OpaqueResultError();
     void setReady();
     bool isReady() const { return mReady; }
 private:
@@ -67,4 +68,10 @@ namespace PulseCommon {
 std::optional<PulseSinkSourceInfo> getSinkSourceInfo(std::shared_ptr<PaContext> context,
                                                      std::string deviceId,
                                                      PulseSinkSourceType type);
-}
+
+bool getSinkSourceInfoAsync(std::shared_ptr<PaContext> context,
+                            uint32_t id,
+                            PulseSinkSourceType type,
+                            std::function<void(std::optional<PulseSinkSourceInfo>)> result);
+
+} // namespace PulseCommon

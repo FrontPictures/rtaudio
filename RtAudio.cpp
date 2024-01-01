@@ -383,8 +383,12 @@ std::shared_ptr<RtApiStreamClassFactory> RtAudio::GetRtAudioStreamFactory(RtAudi
 std::shared_ptr<RtApiSystemCallback> RtAudio::GetRtAudioSystemCallback(RtAudio::Api api, RtAudioDeviceCallbackLambda callback)
 {
 #if defined(__LINUX_PULSE__)
-    if (api == RtAudio::LINUX_PULSE)
-        return std::make_shared<RtApiPulseSystemCallback>(callback);
+    if (api == RtAudio::LINUX_PULSE) {
+        auto clb = std::make_shared<RtApiPulseSystemCallback>(callback);
+        if (clb->hasError())
+            return {};
+        return clb;
+    }
 #endif
 #if defined(__WINDOWS_WASAPI__)
     if (api == RtAudio::WINDOWS_WASAPI)

@@ -27,6 +27,32 @@ void pa_context_subscribe_cb(pa_context *c,
     stream->handleEvent(c, t, idx);
 }
 
+enum PulseSinkSourceType getPulseSinkSourceTypeByFacility(unsigned facility)
+{
+    switch (facility) {
+    case PA_SUBSCRIPTION_EVENT_SINK:
+        return PulseSinkSourceType::SINK;
+    case PA_SUBSCRIPTION_EVENT_SOURCE: {
+        return PulseSinkSourceType::SOURCE;
+    } break;
+    }
+    assert(false);
+    return PulseSinkSourceType::SOURCE;
+}
+
+RtAudioDeviceParam getRtAudioDeviceParamByPulseEvent(unsigned evt)
+{
+    switch (evt) {
+    case PA_SUBSCRIPTION_EVENT_CHANGE:
+        return RtAudioDeviceParam::DEVICE_STATE_CHANGED;
+    case PA_SUBSCRIPTION_EVENT_NEW:
+        return RtAudioDeviceParam::DEVICE_ADDED;
+    case PA_SUBSCRIPTION_EVENT_REMOVE:
+        return RtAudioDeviceParam::DEVICE_REMOVED;
+    }
+    assert(false);
+    return RtAudioDeviceParam::DEVICE_STATE_CHANGED;
+};
 } // namespace
 
 RtApiPulseSystemCallback::RtApiPulseSystemCallback(RtAudioDeviceCallbackLambda callback)
@@ -56,6 +82,7 @@ RtApiPulseSystemCallback::RtApiPulseSystemCallback(RtAudioDeviceCallbackLambda c
     if (success != 1) {
         return;
     }
+    mHasError = false;
     mNotificationThread = std::thread(&RtApiPulseSystemCallback::notificationThread, this);
 }
 
@@ -91,27 +118,9 @@ bool RtApiPulseSystemCallback::hasError() const
 
 void RtApiPulseSystemCallback::notificationThread()
 {
-    auto res = mContextWithLoop->getContext()->getMainloop()->runUntil(
+    mContextWithLoop->getContext()->getMainloop()->runUntil(
         [this]() { return mContextWithLoop->getContext()->hasError(); });
     mHasError = true;
-}
-
-void RtApiPulseSystemCallback::checkCardAddedRemoved(unsigned int t, pa_context *c, uint32_t idx)
-{
-    unsigned int evt = t & PA_SUBSCRIPTION_EVENT_TYPE_MASK;
-    switch (evt) {
-    case PA_SUBSCRIPTION_EVENT_NEW:
-        mCallback("", RtAudioDeviceParam::DEVICE_ADDED);
-        break;
-    case PA_SUBSCRIPTION_EVENT_REMOVE:
-        mCallback("", RtAudioDeviceParam::DEVICE_REMOVED);
-        break;
-    case PA_SUBSCRIPTION_EVENT_CHANGE:
-        mCallback("", RtAudioDeviceParam::DEVICE_STATE_CHANGED);
-        break;
-    default:
-        break;
-    }
 }
 
 void RtApiPulseSystemCallback::checkDefaultChanged(pa_context *c, uint32_t idx, unsigned int t)
@@ -120,11 +129,18 @@ void RtApiPulseSystemCallback::checkDefaultChanged(pa_context *c, uint32_t idx, 
     unsigned int evt = t & PA_SUBSCRIPTION_EVENT_TYPE_MASK;
 
     switch (evt) {
-    case PA_SUBSCRIPTION_EVENT_CHANGE: {
-        mCallback("", RtAudioDeviceParam::DEVICE_STATE_CHANGED);
-    } break;
+    case PA_SUBSCRIPTION_EVENT_CHANGE:
     case PA_SUBSCRIPTION_EVENT_NEW: {
-        mCallback("", RtAudioDeviceParam::DEVICE_ADDED);
+        PulseCommon::getSinkSourceInfoAsync(mContextWithLoop->getContext(),
+                                            idx,
+                                            getPulseSinkSourceTypeByFacility(facility),
+                                            [evt, this](std::optional<PulseSinkSourceInfo> info) {
+                                                if (!info) {
+                                                    return;
+                                                }
+                                                mCallback(info->name,
+                                                          getRtAudioDeviceParamByPulseEvent(evt));
+                                            });
     } break;
     case PA_SUBSCRIPTION_EVENT_REMOVE: {
         mCallback("", RtAudioDeviceParam::DEVICE_REMOVED);

@@ -297,6 +297,7 @@ std::string getProfileNameForSink(std::shared_ptr<PaContext> context, std::strin
     return profile.profile;
 }
 
+OpaqueResultError::~OpaqueResultError() {}
 void OpaqueResultError::setReady()
 {
     mReady = true;
@@ -335,4 +336,45 @@ std::optional<PulseSinkSourceInfo> getSinkSourceInfo(std::shared_ptr<PaContext> 
     auto info = infos[0];
     return info;
 }
+
+bool getSinkSourceInfoAsync(std::shared_ptr<PaContext> context,
+                            uint32_t id,
+                            PulseSinkSourceType type,
+                            std::function<void(std::optional<PulseSinkSourceInfo>)> result)
+{
+    std::shared_ptr<RtPaSinkInfoCallbackUserdata> userd
+        = std::make_shared<RtPaSinkInfoCallbackUserdata>();
+
+    pa_operation *oper = nullptr;
+    if (type == PulseSinkSourceType::SINK) {
+        oper = pa_context_get_sink_info_by_index(context->handle(),
+                                                 id,
+                                                 rt_pa_sink_info_cb,
+                                                 userd.get());
+    } else {
+        oper = pa_context_get_source_info_by_index(context->handle(),
+                                                   id,
+                                                   rt_pa_source_info_cb,
+                                                   userd.get());
+    }
+    if (!oper)
+        return {};
+
+    std::shared_ptr<PaMainloopTask> task = std::make_shared<PaMainloopTask>(
+        oper, std::move(userd), [result](std::shared_ptr<OpaqueResultError> res) {
+            auto *ud = dynamic_cast<RtPaSinkInfoCallbackUserdata *>(res.get());
+            assert(ud);
+            if (!ud) {
+                result({});
+            }
+            auto infos = ud->getInfos();
+            if (infos.size() != 1) {
+                result({});
+            }
+            result(infos[0]);
+        });
+    context->getMainloop()->addTask(std::move(task));
+    return true;
+}
+
 } // namespace PulseCommon

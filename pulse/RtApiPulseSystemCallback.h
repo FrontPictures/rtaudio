@@ -21,12 +21,10 @@ public:
 
 private:
     void notificationThread();
-
-    void checkCardAddedRemoved(unsigned int t, pa_context *c, uint32_t idx);
     void checkDefaultChanged(pa_context *c, uint32_t idx, unsigned int t);
 
     std::thread mNotificationThread;
     RtAudioDeviceCallbackLambda mCallback;
     std::shared_ptr<PaContextWithMainloop> mContextWithLoop;
-    std::atomic_bool mHasError = false;
+    std::atomic_bool mHasError = true;
 };
