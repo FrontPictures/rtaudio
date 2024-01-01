@@ -153,6 +153,73 @@ uint32_t getSinkCardId(std::shared_ptr<PaContext> context, std::string busId)
         [&]() { return devicesStruct.isReady() || context->hasError(); });
     return devicesStruct.card;
 }
+
+struct RtPaSinkInfoCallbackUserdata : public OpaqueResultError
+{
+    std::vector<PulseSinkSourceInfo> getInfos() const { return infos; }
+
+    template<class T>
+    bool addInfo(const T *i, int eol)
+    {
+        if (eol) {
+            setReady();
+            return true;
+        }
+        if (!i)
+            return false;
+        PulseSinkSourceInfo inf;
+        inf.name = i->name;
+        inf.index = i->index;
+        inf.description = i->description;
+        inf.driver = i->driver;
+        inf.card = i->card;
+        if (typeid(T) == typeid(pa_sink_info)) {
+            inf.type = PulseSinkSourceType::SINK;
+        } else if (typeid(T) == typeid(pa_source_info)) {
+            inf.type = PulseSinkSourceType::SOURCE;
+        } else {
+            return false;
+        }
+        for (int p = 0; p < i->n_ports; p++) {
+            auto ip = i->ports[p];
+            PulsePortInfo port;
+            port.name = ip->name;
+            port.desc = ip->description;
+            port.priority = ip->priority;
+            if (ip->available == PA_PORT_AVAILABLE_YES
+                || ip->available == PA_PORT_AVAILABLE_UNKNOWN) {
+                port.available = true;
+            } else {
+                port.available = false;
+            }
+            if (i->active_port == ip) {
+                port.active = true;
+            } else {
+                port.active = false;
+            }
+            inf.ports.push_back(port);
+        }
+        infos.push_back(inf);
+        return true;
+    }
+
+private:
+    std::vector<PulseSinkSourceInfo> infos;
+};
+
+void rt_pa_sink_info_cb(pa_context *c, const pa_sink_info *i, int eol, void *userdata)
+{
+    assert(userdata);
+    auto *ud = reinterpret_cast<RtPaSinkInfoCallbackUserdata *>(userdata);
+    ud->addInfo(i, eol);
+}
+
+void rt_pa_source_info_cb(pa_context *c, const pa_source_info *i, int eol, void *userdata)
+{
+    assert(userdata);
+    auto *ud = reinterpret_cast<RtPaSinkInfoCallbackUserdata *>(userdata);
+    ud->addInfo(i, eol);
+}
 } // namespace
 
 std::optional<ServerInfoStruct> getServerInfo(std::shared_ptr<PaContext> context)
@@ -234,3 +301,38 @@ void OpaqueResultError::setReady()
 {
     mReady = true;
 }
+
+namespace PulseCommon {
+std::optional<PulseSinkSourceInfo> getSinkSourceInfo(std::shared_ptr<PaContext> context,
+                                                     std::string deviceId,
+                                                     PulseSinkSourceType type)
+{
+    RtPaSinkInfoCallbackUserdata userd;
+
+    pa_operation *oper = nullptr;
+    if (type == PulseSinkSourceType::SINK) {
+        oper = pa_context_get_sink_info_by_name(context->handle(),
+                                                deviceId.c_str(),
+                                                rt_pa_sink_info_cb,
+                                                &userd);
+    } else {
+        oper = pa_context_get_source_info_by_name(context->handle(),
+                                                  deviceId.c_str(),
+                                                  rt_pa_source_info_cb,
+                                                  &userd);
+    }
+    if (!oper)
+        return {};
+    context->getMainloop()->runUntil([&]() {
+        auto state = pa_operation_get_state(oper);
+        return userd.isReady() || context->hasError() || state != PA_OPERATION_RUNNING;
+    });
+    pa_operation_unref(oper);
+    auto infos = userd.getInfos();
+    if (infos.size() != 1) {
+        return {};
+    }
+    auto info = infos[0];
+    return info;
+}
+} // namespace PulseCommon

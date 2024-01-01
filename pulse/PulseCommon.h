@@ -1,5 +1,6 @@
 #pragma once
 
+#include "PulseDataStructs.h"
 #include "RtAudio.h"
 #include <algorithm>
 #include <array>
@@ -61,3 +62,9 @@ struct ServerDevicesStruct : public OpaqueResultError
 std::optional<ServerInfoStruct> getServerInfo(std::shared_ptr<PaContext> context);
 std::optional<ServerDevicesStruct> getServerDevices(std::shared_ptr<PaContext> context);
 std::string getProfileNameForSink(std::shared_ptr<PaContext> context, std::string busId);
+
+namespace PulseCommon {
+std::optional<PulseSinkSourceInfo> getSinkSourceInfo(std::shared_ptr<PaContext> context,
+                                                     std::string deviceId,
+                                                     PulseSinkSourceType type);
+}

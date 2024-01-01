@@ -76,11 +76,8 @@ void RtApiPulseSystemCallback::handleEvent(pa_context *c,
     unsigned facility = t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK;
     switch (facility) {
     case PA_SUBSCRIPTION_EVENT_SINK:
-    case PA_SUBSCRIPTION_EVENT_SOURCE:
+    case PA_SUBSCRIPTION_EVENT_SOURCE: {
         checkDefaultChanged(c, idx, t);
-        break;
-    case PA_SUBSCRIPTION_EVENT_CARD: {
-        checkCardAddedRemoved(t, c, idx);
     } break;
     default:
         break;
@@ -124,13 +121,13 @@ void RtApiPulseSystemCallback::checkDefaultChanged(pa_context *c, uint32_t idx, 
 
     switch (evt) {
     case PA_SUBSCRIPTION_EVENT_CHANGE: {
-        printf("Sink/source changed\n");
+        mCallback("", RtAudioDeviceParam::DEVICE_STATE_CHANGED);
     } break;
     case PA_SUBSCRIPTION_EVENT_NEW: {
-        printf("Sink/source new\n");
+        mCallback("", RtAudioDeviceParam::DEVICE_ADDED);
     } break;
     case PA_SUBSCRIPTION_EVENT_REMOVE: {
-        printf("Sink/source remove\n");
+        mCallback("", RtAudioDeviceParam::DEVICE_REMOVED);
     } break;
     default:
         break;
