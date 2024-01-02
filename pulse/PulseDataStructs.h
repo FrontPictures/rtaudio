@@ -14,6 +14,7 @@ struct PulseCardInfo
 {
     uint32_t index = 0;
     std::string name;
+    std::string description;
     std::string driver;
     std::vector<PulseProfileInfo> profiles;
 };

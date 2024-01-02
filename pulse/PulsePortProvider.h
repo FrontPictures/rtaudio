@@ -17,6 +17,7 @@ public:
     std::optional<PulseSinkSourceInfo> getSinkSourceInfo(std::string deviceId,
                                                          PulseSinkSourceType type);
     std::optional<PulseCardInfo> getCardInfoById(uint32_t id);
+    std::optional<std::vector<PulseCardInfo>> getCards();
 
     bool setPortForDevice(std::string deviceId, PulseSinkSourceType type, std::string portName);
     bool hasError() const;

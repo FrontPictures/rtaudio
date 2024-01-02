@@ -67,6 +67,13 @@ public:
             }
             info.profiles.push_back(profile);
         }
+        if (i->proplist) {
+            const char *cardName = pa_proplist_gets(i->proplist, "alsa.card_name");
+            if (cardName) {
+                info.description = cardName;
+            }
+        }
+
         infos.push_back(info);
         return true;
     }
@@ -119,6 +126,25 @@ std::optional<PulseCardInfo> PulsePortProvider::getCardInfoById(uint32_t id)
     }
     auto info = infos[0];
     return info;
+}
+
+std::optional<std::vector<PulseCardInfo>> PulsePortProvider::getCards()
+{
+    RtPaCardInfoUserdata userd;
+    pa_operation *oper = pa_context_get_card_info_list(mContext->getContext()->handle(),
+                                                       rt_pa_card_info_cb,
+                                                       &userd);
+    if (!oper)
+        return {};
+    mContext->getContext()->getMainloop()->runUntil([&]() {
+        auto state = pa_operation_get_state(oper);
+        return userd.isReady() || mContext->getContext()->hasError()
+               || state != PA_OPERATION_RUNNING;
+    });
+    if (userd.isReady() == false)
+        return {};
+    auto infos = userd.getInfos();
+    return infos;
 }
 
 bool PulsePortProvider::setPortForDevice(std::string deviceId,

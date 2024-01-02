@@ -9,8 +9,6 @@
 
 namespace {
 
-static std::map<const void *, bool *> mFreeHandles;
-
 void rt_pa_stream_notify_cb(pa_stream *p, void *userdata)
 {
     assert(userdata);
@@ -38,16 +36,6 @@ void rt_pa_stream_request_cb(pa_stream *p, size_t nbytes, void *userdata)
     stream->streamRequest(p, nbytes);
 }
 
-void rt_pa_free_cb(void *p)
-{
-    assert(p);
-    auto it = mFreeHandles.find(p);
-    if (it == mFreeHandles.end()) {
-        assert(false);
-        return;
-    }
-    *(it->second) = true;
-}
 } // namespace
 
 PaStream::PaStream(std::shared_ptr<PaContext> context,
@@ -219,12 +207,8 @@ bool PaStream::writeData(const void *data, size_t nbytes)
     if (!loop) {
         return false;
     }
-
-    bool success = false;
-    mFreeHandles.insert(std::make_pair(data, &success));
-    auto res = pa_stream_write(mStream, data, nbytes, rt_pa_free_cb, 0, PA_SEEK_RELATIVE);
-    mFreeHandles.erase(data);
-    if (res != 0 || success == false) {
+    auto res = pa_stream_write(mStream, data, nbytes, nullptr, 0, PA_SEEK_RELATIVE);
+    if (res != 0) {
         return false;
     }
     return true;
