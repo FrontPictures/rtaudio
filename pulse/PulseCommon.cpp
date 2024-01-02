@@ -372,8 +372,9 @@ bool getSinkSourceInfoAsync(std::shared_ptr<PaContext> context,
             auto infos = ud->getInfos();
             if (infos.size() != 1) {
                 result({});
+            } else {
+                result(infos[0]);
             }
-            result(infos[0]);
         });
     context->getMainloop()->addTask(std::move(task));
     return true;
