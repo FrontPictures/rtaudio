@@ -27,8 +27,10 @@ void rt_pa_set_server_info_cb2(pa_context *, const pa_server_info *info, void *u
         return;
     }
     serverInfo->defaultRate = info->sample_spec.rate;
-    serverInfo->defaultSinkName = info->default_sink_name;
-    serverInfo->defaultSourceName = info->default_source_name;
+    if (info->default_sink_name)
+        serverInfo->defaultSinkName = info->default_sink_name;
+    if (info->default_source_name)
+        serverInfo->defaultSourceName = info->default_source_name;
     serverInfo->setReady();
 }
 
