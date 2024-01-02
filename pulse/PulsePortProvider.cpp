@@ -181,6 +181,27 @@ bool PulsePortProvider::setPortForDevice(std::string deviceId,
     return false;
 }
 
+bool PulsePortProvider::setProfileForCard(std::string card, std::string profile)
+{
+    RtPaSuccessUserdata userd;
+    pa_operation *oper = pa_context_set_card_profile_by_name(mContext->getContext()->handle(),
+                                                             card.c_str(),
+                                                             profile.c_str(),
+                                                             rt_pa_context_success_cb,
+                                                             &userd);
+    if (!oper)
+        return false;
+    mContext->getContext()->getMainloop()->runUntil([&]() {
+        auto state = pa_operation_get_state(oper);
+        return userd.isReady() || mContext->getContext()->hasError()
+               || state != PA_OPERATION_RUNNING;
+    });
+    pa_operation_unref(oper);
+    if (userd.getResult() == 1)
+        return true;
+    return false;
+}
+
 bool PulsePortProvider::hasError() const
 {
     return mContext->getContext()->hasError();

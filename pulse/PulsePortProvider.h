@@ -20,6 +20,7 @@ public:
     std::optional<std::vector<PulseCardInfo>> getCards();
 
     bool setPortForDevice(std::string deviceId, PulseSinkSourceType type, std::string portName);
+    bool setProfileForCard(std::string card, std::string profile);
     bool hasError() const;
 
 private:
