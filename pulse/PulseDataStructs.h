@@ -8,6 +8,7 @@ struct PulseProfileInfo
     std::string description;
     uint32_t priority = 0;
     bool active = false;
+    bool available = false;
 };
 
 struct PulseCardInfo

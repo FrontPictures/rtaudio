@@ -29,7 +29,7 @@ void list_cards(std::shared_ptr<PulsePortProvider> pulsePorts)
 bool print_card_profiles(std::shared_ptr<PulsePortProvider> pulsePorts, uint32_t card)
 {
     fprintf(stderr, "\n----------\n");
-    fprintf(stderr, "Device info %d:\n", card);
+    fprintf(stderr, "Card info %d:\n", card);
     auto cardInfo = pulsePorts->getCardInfoById(card);
     if (cardInfo.has_value() == false) {
         fprintf(stderr, "Get card info error\n");
@@ -41,6 +41,7 @@ bool print_card_profiles(std::shared_ptr<PulsePortProvider> pulsePorts, uint32_t
         fprintf(stderr, "----------\n");
         fprintf(stderr, "Name: %s\n", p.name.c_str());
         fprintf(stderr, "Desc: %s\n", p.description.c_str());
+        fprintf(stderr, "Avail: %d\n", p.available);
         fprintf(stderr, "Active: %d\n", p.active);
     }
     fprintf(stderr, "\n----------\n");

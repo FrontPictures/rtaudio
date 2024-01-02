@@ -17,6 +17,7 @@ public:
     std::optional<PulseSinkSourceInfo> getSinkSourceInfo(std::string deviceId,
                                                          PulseSinkSourceType type);
     std::optional<PulseCardInfo> getCardInfoById(uint32_t id);
+    std::optional<PulseCardInfo> getCardInfoByName(std::string card);
     std::optional<std::vector<PulseCardInfo>> getCards();
 
     bool setPortForDevice(std::string deviceId, PulseSinkSourceType type, std::string portName);
@@ -24,7 +25,7 @@ public:
     bool hasError() const;
 
 private:
-    PulsePortProvider();
+    PulsePortProvider();    
     bool isValid() const;
     std::shared_ptr<PaContextWithMainloop> mContext;
 };

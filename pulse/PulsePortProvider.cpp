@@ -65,6 +65,7 @@ public:
             } else {
                 profile.active = false;
             }
+            profile.available = p->available;
             info.profiles.push_back(profile);
         }
         if (i->proplist) {
@@ -96,6 +97,26 @@ void rt_pa_context_success_cb(pa_context *c, int success, void *userdata)
     r->setResult(success);
     r->setReady();
 }
+
+std::optional<PulseCardInfo> getCardInfoPriv(pa_operation *oper,
+                                             std::shared_ptr<PaContext> context,
+                                             RtPaCardInfoUserdata *userd)
+{
+    if (!oper)
+        return {};
+    context->getMainloop()->runUntil([&]() {
+        auto state = pa_operation_get_state(oper);
+        return userd->isReady() || context->hasError() || state != PA_OPERATION_RUNNING;
+    });
+    pa_operation_unref(oper);
+    auto infos = userd->getInfos();
+    if (infos.size() != 1) {
+        return {};
+    }
+    auto info = infos[0];
+    return info;
+}
+
 } // namespace
 
 std::optional<PulseSinkSourceInfo> PulsePortProvider::getSinkSourceInfo(std::string deviceId,
@@ -112,20 +133,19 @@ std::optional<PulseCardInfo> PulsePortProvider::getCardInfoById(uint32_t id)
                                              id,
                                              rt_pa_card_info_cb,
                                              &userd);
-    if (!oper)
-        return {};
-    mContext->getContext()->getMainloop()->runUntil([&]() {
-        auto state = pa_operation_get_state(oper);
-        return userd.isReady() || mContext->getContext()->hasError()
-               || state != PA_OPERATION_RUNNING;
-    });
-    pa_operation_unref(oper);
-    auto infos = userd.getInfos();
-    if (infos.size() != 1) {
-        return {};
-    }
-    auto info = infos[0];
-    return info;
+    return getCardInfoPriv(oper, mContext->getContext(), &userd);
+}
+
+std::optional<PulseCardInfo> PulsePortProvider::getCardInfoByName(std::string card)
+{
+    RtPaCardInfoUserdata userd;
+    pa_operation *oper = nullptr;
+    oper = pa_context_get_card_info_by_name(mContext->getContext()->handle(),
+                                            card.c_str(),
+                                            rt_pa_card_info_cb,
+                                            &userd);
+
+    return getCardInfoPriv(oper, mContext->getContext(), &userd);
 }
 
 std::optional<std::vector<PulseCardInfo>> PulsePortProvider::getCards()
