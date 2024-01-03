@@ -115,7 +115,7 @@ const void *RtApiPulseStream::processInput(size_t *nSamplesOut, size_t *nbytes)
                              stream_.userBuffer[RtApi::INPUT].get(),
                              reinterpret_cast<const char *>(data),
                              stream_.convertInfo[RtApi::INPUT],
-                             stream_.bufferSize,
+                             bufferSize,
                              RtApi::INPUT);
         return stream_.userBuffer[RtApi::INPUT].get();
     } else {
