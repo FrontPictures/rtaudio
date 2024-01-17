@@ -9,6 +9,8 @@ std::string convertCharPointerToStdString(const char* text)
 
 std::string convertCharPointerToStdString(const wchar_t* text)
 {
+    if (text == nullptr)
+        return {};
     return std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>>{}.to_bytes(text);
 }
 
