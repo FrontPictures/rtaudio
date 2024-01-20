@@ -1,5 +1,6 @@
 #include "CoreCommon.h"
 #include "RtAudio.h"
+#include <cmath>
 
 namespace CoreCommon {
 

@@ -1,6 +1,7 @@
 #include "RtApiCoreStreamFactory.h"
 #include "CoreCommon.h"
 #include "RtApiCoreStream.h"
+#include <cmath>
 
 namespace {
 
