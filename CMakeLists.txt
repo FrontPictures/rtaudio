@@ -220,14 +220,17 @@ if (NEED_PTHREAD)
   list(APPEND LINKLIBS Threads::Threads)
 endif()
 
+# Create library targets.
 set(LINKLIBS_PRIV)
+set(LIB_TARGETS)
+
 if (WIN32)
     add_library(windowscommon STATIC "include/windowscommon.h" "include/windowscommon.cpp")
     list(APPEND LINKLIBS_PRIV windowscommon)
+    if(NOT BUILD_SHARED_LIBS)
+      list(APPEND LIB_TARGETS windowscommon)
+    endif()
 endif()
-
-# Create library targets.
-set(LIB_TARGETS)
 
 add_library(rtaudio ${rtaudio_SOURCES})
 if(NOT BUILD_SHARED_LIBS)
